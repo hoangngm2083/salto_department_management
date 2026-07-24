@@ -28,10 +28,12 @@ class DepartmentFactory extends Factory
             'Legal & Compliance',
             'Operations',
         ]);
+
         return [
             'name' => ucfirst($name),
             'slug' => Str::slug($name),
             'description' => $this->faker->sentence(10),
+            'status' => $this->faker->randomElement(['active', 'inactive']),
         ];
     }
 }
