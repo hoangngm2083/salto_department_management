@@ -2,15 +2,16 @@
 
 namespace Database\Factories;
 
-use App\Models\User;
+use App\Models\Department;
+use App\Models\Employee;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
- * @extends Factory<User>
+ * @extends Factory<Employee>
  */
-class UserFactory extends Factory
+class EmployeeFactory extends Factory
 {
     /**
      * The current password being used by the factory.
@@ -25,7 +26,10 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
+            'department_id' => Department::factory(),
             'name' => fake()->name(),
+            'birthday' => fake()->date(),
+            'position' => fake()->randomElement(['employee', 'manager']),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
