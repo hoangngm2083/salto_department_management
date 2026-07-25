@@ -24,7 +24,7 @@ class GetDepartmentsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', 'string', Rule::in(['active', 'inactive', 'all'])],
+            'status' => ['sometimes', 'filled', 'string', Rule::in(['active', 'inactive', 'all'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'cursor' => ['nullable', 'string'],
         ];
