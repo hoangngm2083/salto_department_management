@@ -6,7 +6,7 @@ use Laravel\Sanctum\Sanctum;
 
 uses(LazilyRefreshDatabase::class);
 
-test('login_valid_credentials_returns_bearer_token', function () {
+test('login_validCredentials_bearerToken', function () {
     // Arrange
     $employee = Employee::factory()->create([
         'email' => 'admin@example.com',
@@ -31,7 +31,35 @@ test('login_valid_credentials_returns_bearer_token', function () {
     expect($response->json('data.token'))->toBeString()->not->toBeEmpty();
 });
 
-test('login_invalid_credentials_returns_unauthorized', function () {
+test('login_managerCredentials_abilitiesPersisted', function () {
+    // Arrange
+    $manager = Employee::factory()->create([
+        'email' => 'manager@example.com',
+        'password' => 'password',
+        'position' => 'manager',
+    ]);
+
+    // Act
+    $response = $this->postJson('/api/auth/login', [
+        'email' => $manager->email,
+        'password' => 'password',
+        'device_name' => 'pest',
+    ]);
+
+    // Assert
+    $response->assertSuccessful();
+
+    expect($manager->tokens()->latest('id')->firstOrFail()->abilities)->toBe([
+        'profile:read',
+        'employees:read',
+        'employees:create',
+        'employees:update',
+        'departments:read',
+        'departments:update',
+    ]);
+});
+
+test('login_invalidCredentials_unauthorized', function () {
     // Arrange
     $employee = Employee::factory()->create([
         'email' => 'admin@example.com',
@@ -51,7 +79,7 @@ test('login_invalid_credentials_returns_unauthorized', function () {
         ->assertJsonPath('message', 'Unauthenticated.');
 });
 
-test('login_missing_credentials_returns_validation_errors', function () {
+test('login_missingCredentials_validationErrors', function () {
     // Arrange
     $payload = [];
 
@@ -64,7 +92,7 @@ test('login_missing_credentials_returns_validation_errors', function () {
         ->assertJsonValidationErrors(['email', 'password', 'device_name'], 'errors');
 });
 
-test('me_authenticated_employee_returns_employee', function () {
+test('getCurrentEmployee_authenticatedEmployee_employeeReturned', function () {
     // Arrange
     $employee = Employee::factory()->create();
     Sanctum::actingAs($employee, ['profile:read']);
@@ -79,7 +107,7 @@ test('me_authenticated_employee_returns_employee', function () {
         ->assertJsonPath('data.email', $employee->email);
 });
 
-test('me_missing_token_returns_unauthorized', function () {
+test('getCurrentEmployee_missingToken_unauthorized', function () {
     // Arrange
     $endpoint = '/api/auth/me';
 
@@ -92,7 +120,7 @@ test('me_missing_token_returns_unauthorized', function () {
         ->assertJsonPath('message', 'Unauthenticated.');
 });
 
-test('logout_valid_token_revokes_current_token', function () {
+test('logout_validToken_currentTokenRevoked', function () {
     // Arrange
     $employee = Employee::factory()->create();
     $token = $employee->createToken('pest', ['profile:read'])->plainTextToken;

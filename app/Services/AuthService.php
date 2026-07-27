@@ -26,11 +26,35 @@ class AuthService
 
     public function createAccessToken(Employee $employee, string $deviceName): string
     {
-        return $employee->createToken($deviceName, ['*'])->plainTextToken;
+        return $employee->createToken($deviceName, $this->abilitiesFor($employee))->plainTextToken;
     }
 
     public function revokeCurrentAccessToken(Employee $employee): void
     {
         $employee->currentAccessToken()?->delete();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function abilitiesFor(Employee $employee): array
+    {
+        return match ($employee->position) {
+            'admin' => ['*'],
+            'manager' => [
+                'profile:read',
+                'employees:read',
+                'employees:create',
+                'employees:update',
+                'departments:read',
+                'departments:update',
+            ],
+            default => [
+                'profile:read',
+                'employees:read',
+                'employees:update',
+                'departments:read',
+            ],
+        };
     }
 }

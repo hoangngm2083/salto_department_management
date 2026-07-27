@@ -23,7 +23,7 @@ beforeEach(function () {
     );
 });
 
-test('getAllDepartments_defaultParam_onlyActive', function () {
+test('getDepartments_defaultStatus_activeDepartmentsReturned', function () {
     // Arrange
     $initialActiveCount = Department::where('status', 'active')->count();
 
@@ -52,7 +52,7 @@ test('getAllDepartments_defaultParam_onlyActive', function () {
         ->and($response->json('data.data'))->toHaveCount($initialActiveCount + 1);
 });
 
-test('getAllDepartments_statusActive_onlyActive', function () {
+test('getDepartments_activeStatus_activeDepartmentsReturned', function () {
     // Arrange
     $initialActiveCount = Department::where('status', 'active')->count();
 
@@ -71,7 +71,7 @@ test('getAllDepartments_statusActive_onlyActive', function () {
         ->and($response->json('data.data'))->toHaveCount($initialActiveCount + 1);
 });
 
-test('getAllDepartments_statusInactive_onlyInactive', function () {
+test('getDepartments_inactiveStatus_inactiveDepartmentsReturned', function () {
     // Arrange
     $initialInactiveCount = Department::where('status', 'inactive')->count();
 
@@ -90,7 +90,7 @@ test('getAllDepartments_statusInactive_onlyInactive', function () {
         ->and($response->json('data.data'))->toHaveCount($initialInactiveCount + 1);
 });
 
-test('getAllDepartments_statusAll_allStatuses', function () {
+test('getDepartments_allStatus_allDepartmentsReturned', function () {
     // Arrange
     $initialCount = Department::count();
 
@@ -109,7 +109,7 @@ test('getAllDepartments_statusAll_allStatuses', function () {
         ->and($response->json('data.data'))->toHaveCount($initialCount + 2);
 });
 
-test('getAllDepartments_invalidStatus_returns422', function () {
+test('getDepartments_invalidStatus_validationError', function () {
     // Arrange / Act
     $response = $this->getJson('/api/departments?status=unknown');
 
@@ -147,7 +147,7 @@ test('createDepartment_validPayload_created', function () {
     ]);
 });
 
-test('createDepartment_withoutSlug_autoGeneratesSlug', function () {
+test('createDepartment_missingSlug_slugGenerated', function () {
     // Arrange
     $payload = [
         'name' => 'Human Resources',
@@ -169,7 +169,7 @@ test('createDepartment_withoutSlug_autoGeneratesSlug', function () {
     ]);
 });
 
-test('createDepartment_withoutName_returns422', function () {
+test('createDepartment_missingName_validationError', function () {
     // Arrange / Act
     $response = $this->postJson('/api/departments', [
         'description' => 'No name provided',
@@ -181,7 +181,7 @@ test('createDepartment_withoutName_returns422', function () {
         ->assertJsonValidationErrors(['name'], 'errors');
 });
 
-test('createDepartment_duplicateSlug_returns422', function () {
+test('createDepartment_duplicateSlug_validationError', function () {
     // Arrange
     Department::factory()->create([
         'name' => 'Existing',
@@ -201,7 +201,7 @@ test('createDepartment_duplicateSlug_returns422', function () {
         ->assertJsonValidationErrors(['slug'], 'errors');
 });
 
-test('getDepartment_existingSlug_returnsDepartment', function () {
+test('getDepartment_existingSlug_departmentReturned', function () {
     // Arrange
     $department = Department::factory()->create([
         'name' => 'Finance',
@@ -224,7 +224,7 @@ test('getDepartment_existingSlug_returnsDepartment', function () {
         ->assertJsonPath('data.status', 'active');
 });
 
-test('getDepartment_unknownSlug_returns404', function () {
+test('getDepartment_unknownSlug_notFound', function () {
     // Arrange / Act
     $response = $this->getJson('/api/departments/does-not-exist');
 
@@ -270,7 +270,7 @@ test('updateDepartment_validPayload_updated', function () {
     ]);
 });
 
-test('updateDepartment_keepsOwnSlug_succeeds', function () {
+test('updateDepartment_existingSlug_updated', function () {
     // Arrange
     $department = Department::factory()->create([
         'name' => 'Keep Slug',
@@ -311,7 +311,7 @@ test('deleteDepartment_existingSlug_softDeleted', function () {
     $this->assertSoftDeleted($department);
 });
 
-test('getDepartment_deletedSlug_returns404', function () {
+test('getDepartment_deletedSlug_notFound', function () {
     // Arrange
     $department = Department::factory()->create([
         'name' => 'Already Deleted',

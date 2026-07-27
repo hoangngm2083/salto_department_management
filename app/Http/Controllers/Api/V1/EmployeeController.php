@@ -10,6 +10,7 @@ use App\Http\Resources\Employee\EmployeeResource;
 use App\Models\Employee;
 use App\Services\EmployeeService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class EmployeeController extends Controller
 {
@@ -23,6 +24,7 @@ class EmployeeController extends Controller
      */
     public function index(GetEmployeesRequest $request): JsonResponse
     {
+        Gate::authorize('viewAny', Employee::class);
         $employees = $this->employeeService->getPaginated($request->validated());
 
         return $this->successResponse(
@@ -36,7 +38,11 @@ class EmployeeController extends Controller
      */
     public function store(UpsertEmployeeRequest $request): JsonResponse
     {
-        $employee = $this->employeeService->upsert($request->validated());
+        Gate::authorize('create', Employee::class);
+
+        /** @var Employee $actor */
+        $actor = $request->user();
+        $employee = $this->employeeService->upsert($actor, $request->validated());
 
         return $this->successResponse(
             new EmployeeResource($employee),
@@ -50,6 +56,7 @@ class EmployeeController extends Controller
      */
     public function show(Employee $employee): JsonResponse
     {
+        Gate::authorize('view', $employee);
         $employee->loadMissing('department:id,name');
 
         return $this->successResponse(
@@ -63,7 +70,11 @@ class EmployeeController extends Controller
      */
     public function update(UpsertEmployeeRequest $request, Employee $employee): JsonResponse
     {
-        $employee = $this->employeeService->upsert($request->validated(), $employee);
+        Gate::authorize('update', $employee);
+
+        /** @var Employee $actor */
+        $actor = $request->user();
+        $employee = $this->employeeService->upsert($actor, $request->validated(), $employee);
 
         return $this->successResponse(
             new EmployeeResource($employee),
@@ -76,6 +87,7 @@ class EmployeeController extends Controller
      */
     public function destroy(Employee $employee): JsonResponse
     {
+        Gate::authorize('delete', $employee);
         $this->employeeService->delete($employee);
 
         return $this->successResponse(

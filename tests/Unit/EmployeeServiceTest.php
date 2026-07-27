@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
 
-test('case_namePrefix_returnsMatchingEmployees', function () {
+test('getEmployees_namePrefix_matchingEmployees', function () {
     // Arrange
     Employee::factory()->create(['name' => 'Alice Smith', 'position' => 'employee']);
     Employee::factory()->create(['name' => 'Bob Jones', 'position' => 'employee']);
@@ -24,7 +24,7 @@ test('case_namePrefix_returnsMatchingEmployees', function () {
         ->and($result->items()[0]->name)->toBe('Alice Smith');
 });
 
-test('case_emptyPosition_excludesAdmin', function () {
+test('getEmployees_emptyPosition_adminExcluded', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);
     Employee::factory()->create(['position' => 'manager']);
@@ -41,7 +41,7 @@ test('case_emptyPosition_excludesAdmin', function () {
         ->and($result->count())->toBe(2);
 });
 
-test('case_positionFilter_returnsOnlySelected', function () {
+test('getEmployees_positionFilter_selectedEmployees', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);
     Employee::factory()->create(['position' => 'manager']);
@@ -55,9 +55,10 @@ test('case_positionFilter_returnsOnlySelected', function () {
         ->and($result->items()[0]->position)->toBe('manager');
 });
 
-test('case_validData_createsEmployee', function () {
+test('upsertEmployee_validData_employeeCreated', function () {
     // Arrange
     $department = Department::factory()->create();
+    $admin = Employee::factory()->create(['position' => 'admin']);
     $service = app(EmployeeService::class);
     $data = [
         'name' => 'Service Create',
@@ -69,7 +70,7 @@ test('case_validData_createsEmployee', function () {
     ];
 
     // Act
-    $employee = $service->upsert($data);
+    $employee = $service->upsert($admin, $data);
 
     // Assert
     expect($employee)->toBeInstanceOf(Employee::class)
@@ -85,17 +86,18 @@ test('case_validData_createsEmployee', function () {
     ]);
 });
 
-test('case_existingEmployee_updatesRecord', function () {
+test('upsertEmployee_existingEmployee_recordUpdated', function () {
     // Arrange
     $employee = Employee::factory()->create([
         'name' => 'Before Update',
         'email' => 'before@example.com',
         'position' => 'employee',
     ]);
+    $admin = Employee::factory()->create(['position' => 'admin']);
     $service = app(EmployeeService::class);
 
     // Act
-    $updated = $service->upsert([
+    $updated = $service->upsert($admin, [
         'name' => 'After Update',
         'email' => 'after@example.com',
         'department_id' => $employee->department_id,
@@ -111,7 +113,7 @@ test('case_existingEmployee_updatesRecord', function () {
         ->and($updated->relationLoaded('department'))->toBeTrue();
 });
 
-test('case_existingEmployee_softDeletesRecord', function () {
+test('deleteEmployee_existingEmployee_recordSoftDeleted', function () {
     // Arrange
     $employee = Employee::factory()->create();
     $service = app(EmployeeService::class);

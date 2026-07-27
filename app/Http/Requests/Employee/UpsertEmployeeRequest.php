@@ -28,9 +28,9 @@ class UpsertEmployeeRequest extends FormRequest
         $employeeId = $employee instanceof Employee ? $employee->id : $employee;
 
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [Rule::requiredIf($this->isMethod('POST')), 'string', 'max:255'],
             'email' => [
-                'required',
+                Rule::requiredIf($this->isMethod('POST')),
                 'string',
                 'email',
                 'max:255',
@@ -42,9 +42,17 @@ class UpsertEmployeeRequest extends FormRequest
                 'string',
                 'min:8',
             ],
-            'department_id' => ['required', 'integer', 'exists:departments,id'],
-            'birthday' => ['required', 'date'],
-            'position' => ['required', 'string', Rule::in(['employee', 'manager', 'admin'])],
+            'department_id' => [
+                Rule::requiredIf($this->isMethod('POST')),
+                'integer',
+                'exists:departments,id',
+            ],
+            'birthday' => [Rule::requiredIf($this->isMethod('POST')), 'date'],
+            'position' => [
+                Rule::requiredIf($this->isMethod('POST')),
+                'string',
+                Rule::in(['employee', 'manager', 'admin']),
+            ],
         ];
     }
 }

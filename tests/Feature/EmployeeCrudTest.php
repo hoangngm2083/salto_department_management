@@ -23,7 +23,7 @@ beforeEach(function () {
     );
 });
 
-test('case_commaSeparatedPositions_returnsMatchingEmployees', function () {
+test('getEmployees_commaSeparatedPositions_matchingEmployees', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee', 'name' => 'Alice Employee']);
     Employee::factory()->create(['position' => 'manager', 'name' => 'Bob Manager']);
@@ -42,7 +42,7 @@ test('case_commaSeparatedPositions_returnsMatchingEmployees', function () {
         ->and($response->json('data.data'))->toHaveCount(2);
 });
 
-test('case_singlePosition_returnsMatchingEmployees', function () {
+test('getEmployees_singlePosition_matchingEmployees', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);
     Employee::factory()->create(['position' => 'manager']);
@@ -58,7 +58,7 @@ test('case_singlePosition_returnsMatchingEmployees', function () {
     expect($positions)->toBe(['employee']);
 });
 
-test('case_positionsWithSpaces_returnsMatchingEmployees', function () {
+test('getEmployees_positionsWithSpaces_matchingEmployees', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);
     Employee::factory()->create(['position' => 'manager']);
@@ -72,7 +72,7 @@ test('case_positionsWithSpaces_returnsMatchingEmployees', function () {
     expect($response->json('data.data'))->toHaveCount(2);
 });
 
-test('case_positionArrayQuery_returnsMatchingEmployees', function () {
+test('getEmployees_positionArray_matchingEmployees', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);
     Employee::factory()->create(['position' => 'manager']);
@@ -86,7 +86,7 @@ test('case_positionArrayQuery_returnsMatchingEmployees', function () {
     expect($response->json('data.data'))->toHaveCount(2);
 });
 
-test('case_noPositionFilter_excludesAdmin', function () {
+test('getEmployees_noPositionFilter_adminExcluded', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);
     Employee::factory()->create(['position' => 'admin']);
@@ -102,7 +102,7 @@ test('case_noPositionFilter_excludesAdmin', function () {
     expect($positions)->toBe(['employee']);
 });
 
-test('case_invalidPositions_returns422', function () {
+test('getEmployees_invalidPositions_validationError', function () {
     // Arrange / Act
     $response = $this->getJson('/api/employees?position=p1,p2');
 
@@ -112,7 +112,7 @@ test('case_invalidPositions_returns422', function () {
         ->assertJsonValidationErrors(['position.0', 'position.1'], 'errors');
 });
 
-test('case_validPayload_createsEmployee', function () {
+test('createEmployee_validPayload_created', function () {
     // Arrange
     $department = Department::factory()->create();
     $payload = [
@@ -145,7 +145,7 @@ test('case_validPayload_createsEmployee', function () {
     ]);
 });
 
-test('case_missingRequiredFields_returns422', function () {
+test('createEmployee_missingRequiredFields_validationError', function () {
     // Arrange / Act
     $response = $this->postJson('/api/employees', []);
 
@@ -155,7 +155,7 @@ test('case_missingRequiredFields_returns422', function () {
         ->assertJsonValidationErrors(['name', 'email', 'password', 'department_id', 'birthday', 'position'], 'errors');
 });
 
-test('case_duplicateEmail_returns422', function () {
+test('createEmployee_duplicateEmail_validationError', function () {
     // Arrange
     $department = Department::factory()->create();
     Employee::factory()->create(['email' => 'taken@example.com']);
@@ -175,7 +175,7 @@ test('case_duplicateEmail_returns422', function () {
         ->assertJsonValidationErrors(['email'], 'errors');
 });
 
-test('case_existingId_returnsEmployee', function () {
+test('getEmployee_existingId_employeeReturned', function () {
     // Arrange
     $employee = Employee::factory()->create([
         'name' => 'John Show',
@@ -195,7 +195,7 @@ test('case_existingId_returnsEmployee', function () {
         ->assertJsonPath('data.department_name', $employee->department->name);
 });
 
-test('case_unknownId_returns404', function () {
+test('getEmployee_unknownId_notFound', function () {
     // Arrange / Act
     $response = $this->getJson('/api/employees/999999');
 
@@ -205,7 +205,7 @@ test('case_unknownId_returns404', function () {
         ->assertJsonPath('message', 'Resource not found.');
 });
 
-test('case_validPayload_updatesEmployee', function () {
+test('updateEmployee_validPayload_updated', function () {
     // Arrange
     $department = Department::factory()->create();
     $newDepartment = Department::factory()->create();
@@ -245,7 +245,7 @@ test('case_validPayload_updatesEmployee', function () {
     ]);
 });
 
-test('case_updateKeepsOwnEmail_succeeds', function () {
+test('updateEmployee_existingEmail_updated', function () {
     // Arrange
     $employee = Employee::factory()->create(['email' => 'keep@example.com']);
 
@@ -264,7 +264,7 @@ test('case_updateKeepsOwnEmail_succeeds', function () {
         ->assertJsonPath('data.name', 'Updated Name');
 });
 
-test('case_existingId_softDeletesEmployee', function () {
+test('deleteEmployee_existingId_softDeleted', function () {
     // Arrange
     $employee = Employee::factory()->create();
 
@@ -280,7 +280,7 @@ test('case_existingId_softDeletesEmployee', function () {
     $this->assertSoftDeleted($employee);
 });
 
-test('case_deletedId_returns404', function () {
+test('getEmployee_deletedId_notFound', function () {
     // Arrange
     $employee = Employee::factory()->create();
     $employee->delete();
