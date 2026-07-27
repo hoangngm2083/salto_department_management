@@ -1,12 +1,32 @@
 <?php
 
 use App\Models\Department;
+use App\Models\Employee;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
+beforeEach(function () {
+    $adminDepartment = Department::factory()->create([
+        'name' => 'Admin Department',
+        'slug' => 'admin-department',
+        'status' => 'active',
+    ]);
+
+    Sanctum::actingAs(
+        Employee::factory()->make([
+            'position' => 'admin',
+            'department_id' => $adminDepartment->id,
+        ]),
+        ['*']
+    );
+});
+
 test('getAllDepartments_defaultParam_onlyActive', function () {
     // Arrange
+    $initialActiveCount = Department::where('status', 'active')->count();
+
     Department::factory()->create([
         'name' => 'Active Dept',
         'slug' => 'active-dept',
@@ -29,11 +49,13 @@ test('getAllDepartments_defaultParam_onlyActive', function () {
     $statuses = collect($response->json('data.data'))->pluck('status')->unique()->values()->all();
 
     expect($statuses)->toBe(['active'])
-        ->and($response->json('data.data'))->toHaveCount(1);
+        ->and($response->json('data.data'))->toHaveCount($initialActiveCount + 1);
 });
 
 test('getAllDepartments_statusActive_onlyActive', function () {
     // Arrange
+    $initialActiveCount = Department::where('status', 'active')->count();
+
     Department::factory()->create(['name' => 'Active A', 'slug' => 'active-a', 'status' => 'active']);
     Department::factory()->create(['name' => 'Inactive A', 'slug' => 'inactive-a', 'status' => 'inactive']);
 
@@ -46,11 +68,13 @@ test('getAllDepartments_statusActive_onlyActive', function () {
     $statuses = collect($response->json('data.data'))->pluck('status')->unique()->values()->all();
 
     expect($statuses)->toBe(['active'])
-        ->and($response->json('data.data'))->toHaveCount(1);
+        ->and($response->json('data.data'))->toHaveCount($initialActiveCount + 1);
 });
 
 test('getAllDepartments_statusInactive_onlyInactive', function () {
     // Arrange
+    $initialInactiveCount = Department::where('status', 'inactive')->count();
+
     Department::factory()->create(['name' => 'Active B', 'slug' => 'active-b', 'status' => 'active']);
     Department::factory()->create(['name' => 'Inactive B', 'slug' => 'inactive-b', 'status' => 'inactive']);
 
@@ -63,11 +87,13 @@ test('getAllDepartments_statusInactive_onlyInactive', function () {
     $statuses = collect($response->json('data.data'))->pluck('status')->unique()->values()->all();
 
     expect($statuses)->toBe(['inactive'])
-        ->and($response->json('data.data'))->toHaveCount(1);
+        ->and($response->json('data.data'))->toHaveCount($initialInactiveCount + 1);
 });
 
 test('getAllDepartments_statusAll_allStatuses', function () {
     // Arrange
+    $initialCount = Department::count();
+
     Department::factory()->create(['name' => 'Active C', 'slug' => 'active-c', 'status' => 'active']);
     Department::factory()->create(['name' => 'Inactive C', 'slug' => 'inactive-c', 'status' => 'inactive']);
 
@@ -80,7 +106,7 @@ test('getAllDepartments_statusAll_allStatuses', function () {
     $statuses = collect($response->json('data.data'))->pluck('status')->unique()->sort()->values()->all();
 
     expect($statuses)->toBe(['active', 'inactive'])
-        ->and($response->json('data.data'))->toHaveCount(2);
+        ->and($response->json('data.data'))->toHaveCount($initialCount + 2);
 });
 
 test('getAllDepartments_invalidStatus_returns422', function () {

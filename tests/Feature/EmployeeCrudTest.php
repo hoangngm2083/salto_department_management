@@ -3,8 +3,25 @@
 use App\Models\Department;
 use App\Models\Employee;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    $adminDepartment = Department::factory()->create([
+        'name' => 'Admin Department',
+        'slug' => 'admin-department',
+        'status' => 'active',
+    ]);
+
+    Sanctum::actingAs(
+        Employee::factory()->make([
+            'position' => 'admin',
+            'department_id' => $adminDepartment->id,
+        ]),
+        ['*']
+    );
+});
 
 test('case_commaSeparatedPositions_returnsMatchingEmployees', function () {
     // Arrange
