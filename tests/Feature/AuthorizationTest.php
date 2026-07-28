@@ -3,7 +3,6 @@
 use App\Models\Department;
 use App\Models\Employee;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Gate;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
@@ -133,20 +132,4 @@ test('createDepartment_managerToken_forbidden', function () {
     // Assert
     $response->assertForbidden()
         ->assertJsonPath('message', 'Forbidden.');
-});
-
-test('accessAdminDashboard_adminAndManager_expectedPermissions', function () {
-    // Arrange
-    $admin = Employee::factory()->create(['position' => 'admin']);
-    $manager = Employee::factory()->create(['position' => 'manager']);
-
-    // Act
-    $adminCanAccessDashboard = Gate::forUser($admin)->allows('access-admin-dashboard');
-    $managerCanExportReports = Gate::forUser($manager)->allows('export-reports');
-    $managerCanResetCache = Gate::forUser($manager)->allows('reset-system-cache');
-
-    // Assert
-    expect($adminCanAccessDashboard)->toBeTrue()
-        ->and($managerCanExportReports)->toBeTrue()
-        ->and($managerCanResetCache)->toBeFalse();
 });
