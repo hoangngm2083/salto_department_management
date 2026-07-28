@@ -11,40 +11,56 @@ export default function DepartmentDetailPage() {
   const { slug } = useParams();
   const [department, setDepartment] = useState(null);
   const [employees, setEmployees] = useState([]);
+  const [meta, setMeta] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+
+  function fetchEmployees(cursor) {
+    setLoading(true);
+
+    listEmployees({
+      department_slug: slug,
+      name: search || undefined,
+      per_page: PAGE_SIZE,
+      cursor: cursor ?? undefined,
+    })
+      .then((res) => {
+        setEmployees(res.data);
+        setMeta(res.meta);
+      })
+      .finally(() => setLoading(false));
+  }
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
-    setLoading(true);
-    setPage(0);
+    setDepartment(null);
     setSearch('');
 
-    Promise.all([getDepartment(slug), listEmployees({ per_page: 100 })])
-      .then(([departmentData, employeesRes]) => {
-        setDepartment(departmentData);
-        setEmployees(employeesRes.data.filter((e) => e.department_slug === slug));
-      })
-      .finally(() => setLoading(false));
+    getDepartment(slug).then(setDepartment);
   }, [slug]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => fetchEmployees(null), 300);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, search]);
+
+  function handleNext() {
+    fetchEmployees(meta.next_cursor);
+  }
+
+  function handlePrev() {
+    fetchEmployees(meta.prev_cursor);
+  }
 
   function stubAction(message) {
     return () => toast.info(message);
   }
 
-  if (loading) {
+  if (!department) {
     return <p className="text-gray-500">Đang tải...</p>;
   }
-
-  if (!department) {
-    return <p className="text-red-600">Không tìm thấy phòng ban.</p>;
-  }
-
-  const filtered = employees.filter((e) =>
-    e.name.toLowerCase().includes(search.trim().toLowerCase())
-  );
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div>
@@ -66,10 +82,7 @@ export default function DepartmentDetailPage() {
         type="text"
         placeholder="Tìm kiếm theo tên..."
         value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setPage(0);
-        }}
+        onChange={(e) => setSearch(e.target.value)}
         className="mb-4 w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
       />
 
@@ -84,7 +97,15 @@ export default function DepartmentDetailPage() {
             </tr>
           </thead>
           <tbody>
-            {paged.length === 0 && (
+            {loading && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                  Đang tải...
+                </td>
+              </tr>
+            )}
+
+            {!loading && employees.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
                   Không có nhân viên nào.
@@ -92,39 +113,40 @@ export default function DepartmentDetailPage() {
               </tr>
             )}
 
-            {paged.map((employee) => (
-              <tr key={employee.id} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-2">{employee.name}</td>
-                <td className="px-4 py-2 text-gray-500">{employee.email}</td>
-                <td className="px-4 py-2">{employee.position}</td>
-                <td className="px-4 py-2">
-                  <div className="flex gap-2">
-                    <Link
-                      to={`/employees/${employee.id}`}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                      Xem chi tiết
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={stubAction('Chức năng xóa đang được phát triển.')}
-                      className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                    >
-                      Xóa
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {!loading &&
+              employees.map((employee) => (
+                <tr key={employee.id} className="border-b border-gray-100 last:border-0">
+                  <td className="px-4 py-2">{employee.name}</td>
+                  <td className="px-4 py-2 text-gray-500">{employee.email}</td>
+                  <td className="px-4 py-2">{employee.position}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <Link
+                        to={`/employees/${employee.id}`}
+                        className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Xem chi tiết
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={stubAction('Chức năng xóa đang được phát triển.')}
+                        className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Xóa
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
 
       <Pager
-        hasPrev={page > 0}
-        hasNext={(page + 1) * PAGE_SIZE < filtered.length}
-        onPrev={() => setPage((p) => Math.max(0, p - 1))}
-        onNext={() => setPage((p) => p + 1)}
+        hasPrev={Boolean(meta.prev_cursor)}
+        hasNext={Boolean(meta.next_cursor)}
+        onPrev={handlePrev}
+        onNext={handleNext}
       />
     </div>
   );

@@ -112,6 +112,62 @@ test('getEmployees_invalidPositions_validationError', function () {
         ->assertJsonValidationErrors(['position.0', 'position.1'], 'errors');
 });
 
+test('getEmployees_departmentId_matchingEmployees', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $otherDepartment = Department::factory()->create();
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
+
+    // Act
+    $response = $this->getJson("/api/employees?department_id={$department->id}");
+
+    // Assert
+    $response->assertSuccessful();
+
+    $departmentIds = collect($response->json('data.data'))->pluck('department_id')->unique()->values()->all();
+
+    expect($departmentIds)->toBe([$department->id]);
+});
+
+test('getEmployees_departmentSlug_matchingEmployees', function () {
+    // Arrange
+    $department = Department::factory()->create(['slug' => 'engineering']);
+    $otherDepartment = Department::factory()->create(['slug' => 'sales']);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
+
+    // Act
+    $response = $this->getJson('/api/employees?department_slug=engineering');
+
+    // Assert
+    $response->assertSuccessful();
+
+    $slugs = collect($response->json('data.data'))->pluck('department_slug')->unique()->values()->all();
+
+    expect($slugs)->toBe(['engineering']);
+});
+
+test('getEmployees_unknownDepartmentId_validationError', function () {
+    // Arrange / Act
+    $response = $this->getJson('/api/employees?department_id=999999');
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonPath('success', false)
+        ->assertJsonValidationErrors(['department_id'], 'errors');
+});
+
+test('getEmployees_unknownDepartmentSlug_validationError', function () {
+    // Arrange / Act
+    $response = $this->getJson('/api/employees?department_slug=unknown-slug');
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonPath('success', false)
+        ->assertJsonValidationErrors(['department_slug'], 'errors');
+});
+
 test('createEmployee_validPayload_created', function () {
     // Arrange
     $department = Department::factory()->create();

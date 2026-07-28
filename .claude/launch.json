@@ -5,7 +5,8 @@
       "name": "fe-vite-project",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "fe/vite-project"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

@@ -27,6 +27,8 @@ class EmployeeService
             ->select(['id', 'department_id', 'name', 'email', 'birthday', 'position', 'created_at', 'updated_at'])
             ->with('department:id,name,slug')
             ->when($data['name'] ?? null, fn ($query, $name) => $query->where('name', 'like', "{$name}%"))
+            ->when($data['department_id'] ?? null, fn ($query, $departmentId) => $query->where('department_id', $departmentId))
+            ->when($data['department_slug'] ?? null, fn ($query, $slug) => $query->whereRelation('department', 'slug', $slug))
             ->when(
                 ! empty($positions),
                 fn ($query) => $query->whereIn('position', (array) $positions),

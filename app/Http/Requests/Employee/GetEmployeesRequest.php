@@ -55,6 +55,8 @@ class GetEmployeesRequest extends FormRequest
             'position' => ['sometimes', 'nullable', 'array'],
             /** @ignoreParam */
             'position.*' => ['required', 'string', Rule::in(['employee', 'manager'])],
+            'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')],
+            'department_slug' => ['nullable', 'string', Rule::exists('departments', 'slug')],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'cursor' => ['nullable', 'string'],
         ];

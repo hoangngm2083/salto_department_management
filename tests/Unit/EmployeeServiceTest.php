@@ -55,6 +55,38 @@ test('getEmployees_positionFilter_selectedEmployees', function () {
         ->and($result->items()[0]->position)->toBe('manager');
 });
 
+test('getEmployees_departmentId_matchingEmployees', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $otherDepartment = Department::factory()->create();
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $result = $service->getPaginated(['department_id' => $department->id]);
+
+    // Assert
+    expect($result->count())->toBe(1)
+        ->and($result->items()[0]->department_id)->toBe($department->id);
+});
+
+test('getEmployees_departmentSlug_matchingEmployees', function () {
+    // Arrange
+    $department = Department::factory()->create(['slug' => 'engineering']);
+    $otherDepartment = Department::factory()->create(['slug' => 'sales']);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $result = $service->getPaginated(['department_slug' => 'engineering']);
+
+    // Assert
+    expect($result->count())->toBe(1)
+        ->and($result->items()[0]->department_id)->toBe($department->id);
+});
+
 test('upsertEmployee_validData_employeeCreated', function () {
     // Arrange
     $department = Department::factory()->create();
