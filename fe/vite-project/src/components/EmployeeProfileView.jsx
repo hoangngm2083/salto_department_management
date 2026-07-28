@@ -1,18 +1,39 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { listDepartments } from '../api/departments';
+import { updateEmployee } from '../api/employees';
+import { useAuth } from '../context/useAuth';
 import { ROLE_LABELS } from '../lib/role-labels';
 
-export default function EmployeeProfileView({ employee, canEdit }) {
+const POSITION_OPTIONS = ['employee', 'manager', 'admin'];
+
+export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
+  const { user: actor, updateUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [departments, setDepartments] = useState([]);
+
+  // Only admins may reassign department/position, per EmployeeService::ALLOWED_UPDATE_FIELDS_BY_ROLE -
+  // managers/employees editing these fields would be silently ignored by the backend.
+  const canEditRestrictedFields = canEdit && actor.position === 'admin';
 
   function startEditing() {
     setDraft({
       name: employee.name,
       email: employee.email,
       birthday: employee.birthday ?? '',
+      password: '',
+      department_id: employee.department_id ?? '',
+      position: employee.position,
     });
     setEditing(true);
+
+    if (canEditRestrictedFields) {
+      listDepartments({ status: 'all', per_page: 100 })
+        .then((res) => setDepartments(res.data))
+        .catch(() => {});
+    }
   }
 
   function cancelEditing() {
@@ -20,8 +41,43 @@ export default function EmployeeProfileView({ employee, canEdit }) {
     setEditing(false);
   }
 
-  function handleSave() {
-    toast.info('Chức năng cập nhật đang được phát triển.');
+  async function handleSave() {
+    setSaving(true);
+
+    const payload = {
+      name: draft.name,
+      email: draft.email,
+    };
+
+    if (draft.birthday) {
+      payload.birthday = draft.birthday;
+    }
+
+    if (draft.password) {
+      payload.password = draft.password;
+    }
+
+    if (canEditRestrictedFields) {
+      payload.department_id = Number(draft.department_id);
+      payload.position = draft.position;
+    }
+
+    try {
+      const updated = await updateEmployee(employee.id, payload);
+      toast.success('Cập nhật thông tin nhân viên thành công.');
+      setEditing(false);
+      setDraft(null);
+
+      if (actor.id === updated.id) {
+        updateUser(updated);
+      }
+
+      onSaved?.(updated);
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -79,14 +135,54 @@ export default function EmployeeProfileView({ employee, canEdit }) {
           )}
         </Field>
 
+        {editing && (
+          <Field label="Mật khẩu mới">
+            <input
+              type="password"
+              value={draft.password}
+              onChange={(e) => setDraft({ ...draft, password: e.target.value })}
+              placeholder="Để trống nếu không đổi"
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            />
+          </Field>
+        )}
+
         <Field label="Vai trò">
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-            {ROLE_LABELS[employee.position] ?? employee.position}
-          </span>
+          {editing && canEditRestrictedFields ? (
+            <select
+              value={draft.position}
+              onChange={(e) => setDraft({ ...draft, position: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            >
+              {POSITION_OPTIONS.map((position) => (
+                <option key={position} value={position}>
+                  {ROLE_LABELS[position] ?? position}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+              {ROLE_LABELS[employee.position] ?? employee.position}
+            </span>
+          )}
         </Field>
 
         <Field label="Phòng ban">
-          <span>{employee.department_name ?? '—'}</span>
+          {editing && canEditRestrictedFields ? (
+            <select
+              value={draft.department_id}
+              onChange={(e) => setDraft({ ...draft, department_id: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            >
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span>{employee.department_name ?? '—'}</span>
+          )}
         </Field>
       </dl>
 
@@ -95,16 +191,18 @@ export default function EmployeeProfileView({ employee, canEdit }) {
           <button
             type="button"
             onClick={cancelEditing}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            disabled={saving}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
           >
             Hủy
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+            disabled={saving}
+            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
           >
-            Lưu
+            {saving ? 'Đang lưu...' : 'Lưu'}
           </button>
         </div>
       )}

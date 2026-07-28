@@ -40,7 +40,7 @@ export default function EmployeeProfilePage() {
       <Link to={`/departments/${employee.department_slug}`} className="mb-4 inline-block text-sm text-gray-600 hover:underline">
         &larr; Quay lại phòng ban
       </Link>
-      <EmployeeProfileView employee={employee} canEdit={canEdit} />
+      <EmployeeProfileView employee={employee} canEdit={canEdit} onSaved={setEmployee} />
     </div>
   );
 }

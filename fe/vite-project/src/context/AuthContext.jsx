@@ -33,8 +33,12 @@ export function AuthProvider({ children }) {
     }
   }
 
+  function updateUser(employee) {
+    setUser(employee);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
