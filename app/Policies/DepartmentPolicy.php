@@ -14,12 +14,12 @@ class DepartmentPolicy
 
     public function viewAny(Employee $employee): bool
     {
-        return in_array($employee->position, ['employee', 'manager'], true);
+        return false;
     }
 
     public function view(Employee $employee, Department $department): bool
     {
-        return in_array($employee->position, ['employee', 'manager'], true);
+        return $employee->position === 'manager' && $employee->department_id === $department->id;
     }
 
     public function create(Employee $employee): bool
