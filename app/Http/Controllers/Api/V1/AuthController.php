@@ -21,7 +21,7 @@ class AuthController extends Controller
         $token = $this->authService->createAccessToken($employee, $credentials['device_name']);
 
         return $this->successResponse([
-            'employee' => new EmployeeResource($employee->loadMissing('department:id,name')),
+            'employee' => new EmployeeResource($employee->loadMissing('department:id,name,slug')),
             'token' => $token,
             'token_type' => 'Bearer',
         ], 'Authenticated successfully.');
@@ -33,7 +33,7 @@ class AuthController extends Controller
         $employee = $request->user();
 
         return $this->successResponse(
-            new EmployeeResource($employee->loadMissing('department:id,name')),
+            new EmployeeResource($employee->loadMissing('department:id,name,slug')),
             'Authenticated employee retrieved successfully.'
         );
     }

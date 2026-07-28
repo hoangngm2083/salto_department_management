@@ -25,7 +25,7 @@ class EmployeeService
 
         return Employee::query()
             ->select(['id', 'department_id', 'name', 'email', 'birthday', 'position', 'created_at', 'updated_at'])
-            ->with('department:id,name')
+            ->with('department:id,name,slug')
             ->when($data['name'] ?? null, fn ($query, $name) => $query->where('name', 'like', "{$name}%"))
             ->when(
                 ! empty($positions),
@@ -52,10 +52,10 @@ class EmployeeService
         if ($employee !== null) {
             $employee->update($data);
 
-            return $employee->fresh(['department:id,name']);
+            return $employee->fresh(['department:id,name,slug']);
         }
 
-        return Employee::create($data)->load('department:id,name');
+        return Employee::create($data)->load('department:id,name,slug');
     }
 
     /**

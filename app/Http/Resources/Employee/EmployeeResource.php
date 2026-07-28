@@ -18,6 +18,7 @@ class EmployeeResource extends JsonResource
             'id' => $this->id,
             'department_id' => $this->department_id,
             'department_name' => $this->department?->name,
+            'department_slug' => $this->department?->slug,
             'name' => $this->name,
             'email' => $this->email,
             'birthday' => $this->birthday?->toDateString(),
