@@ -169,6 +169,29 @@ test('createDepartment_missingSlug_slugGenerated', function () {
     ]);
 });
 
+test('createDepartment_customSlugProvided_slugGeneratedFromName', function () {
+    // Arrange
+    $payload = [
+        'name' => 'Engineering',
+        'slug' => 'totally-different-slug',
+        'description' => 'Builds products',
+        'status' => 'active',
+    ];
+
+    // Act
+    $response = $this->postJson('/api/departments', $payload);
+
+    // Assert
+    $response->assertCreated()
+        ->assertJsonPath('data.name', 'Engineering')
+        ->assertJsonPath('data.slug', 'engineering');
+
+    $this->assertDatabaseHas('departments', [
+        'name' => 'Engineering',
+        'slug' => 'engineering',
+    ]);
+});
+
 test('createDepartment_missingName_validationError', function () {
     // Arrange / Act
     $response = $this->postJson('/api/departments', [
@@ -185,14 +208,14 @@ test('createDepartment_duplicateSlug_validationError', function () {
     // Arrange
     Department::factory()->create([
         'name' => 'Existing',
-        'slug' => 'taken-slug',
+        'slug' => 'existing',
         'status' => 'active',
     ]);
 
     // Act
     $response = $this->postJson('/api/departments', [
-        'name' => 'Another Dept',
-        'slug' => 'taken-slug',
+        'name' => 'Existing',
+        'slug' => 'existing',
         'status' => 'active',
     ]);
 
@@ -270,7 +293,7 @@ test('updateDepartment_validPayload_updated', function () {
     ]);
 });
 
-test('updateDepartment_existingSlug_updated', function () {
+test('updateDepartment_unchangedName_slugUnchanged', function () {
     // Arrange
     $department = Department::factory()->create([
         'name' => 'Keep Slug',
@@ -280,15 +303,35 @@ test('updateDepartment_existingSlug_updated', function () {
 
     // Act
     $response = $this->putJson("/api/departments/{$department->slug}", [
-        'name' => 'Updated Keep Slug',
-        'slug' => 'keep-slug',
+        'name' => 'Keep Slug',
         'status' => 'active',
     ]);
 
     // Assert
     $response->assertSuccessful()
         ->assertJsonPath('data.slug', 'keep-slug')
-        ->assertJsonPath('data.name', 'Updated Keep Slug');
+        ->assertJsonPath('data.name', 'Keep Slug');
+});
+
+test('updateDepartment_customSlugProvided_slugGeneratedFromName', function () {
+    // Arrange
+    $department = Department::factory()->create([
+        'name' => 'Keep Slug',
+        'slug' => 'keep-slug',
+        'status' => 'active',
+    ]);
+
+    // Act
+    $response = $this->putJson("/api/departments/{$department->slug}", [
+        'name' => 'Keep Slug',
+        'slug' => 'totally-different-slug',
+        'status' => 'active',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.slug', 'keep-slug')
+        ->assertJsonPath('data.name', 'Keep Slug');
 });
 
 test('deleteDepartment_existingSlug_softDeleted', function () {

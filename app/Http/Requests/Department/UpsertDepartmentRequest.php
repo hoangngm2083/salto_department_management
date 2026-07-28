@@ -23,7 +23,7 @@ class UpsertDepartmentRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        if ($this->filled('name') && ! $this->filled('slug')) {
+        if ($this->filled('name')) {
             $this->merge([
                 'slug' => Str::slug($this->input('name')),
             ]);
@@ -43,7 +43,7 @@ class UpsertDepartmentRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'slug' => [
-                'nullable',
+                'required',
                 'string',
                 'max:255',
                 Rule::unique('departments', 'slug')->ignore($departmentId),
