@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { beginLogoutGuard } from '../lib/auth-storage';
 import { ROLE_LABELS } from '../lib/role-labels';
@@ -22,7 +22,20 @@ export default function Header() {
 
   return (
     <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-      <span className="text-lg font-semibold text-gray-900">Department Management</span>
+      <div className="flex items-center gap-6">
+        <span className="text-lg font-semibold text-gray-900">Department Management</span>
+
+        {user?.position === 'admin' && (
+          <nav className="flex items-center gap-4 text-sm font-medium text-gray-600">
+            <Link to="/departments" className="hover:text-gray-900">
+              Phòng ban
+            </Link>
+            <Link to="/employees" className="hover:text-gray-900">
+              Người dùng
+            </Link>
+          </nav>
+        )}
+      </div>
 
       {user && (
         <div className="flex items-center gap-4">

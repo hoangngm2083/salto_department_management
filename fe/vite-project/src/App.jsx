@@ -8,6 +8,7 @@ import MePage from './pages/MePage';
 import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import DepartmentsListPage from './pages/DepartmentsListPage';
 import DepartmentDetailPage from './pages/DepartmentDetailPage';
+import EmployeesListPage from './pages/EmployeesListPage';
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export default function App() {
 
           <Route element={<ProtectedRoute roles={['admin']} />}>
             <Route path="/departments" element={<DepartmentsListPage />} />
+            <Route path="/employees" element={<EmployeesListPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={['admin', 'manager']} />}>
