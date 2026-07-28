@@ -2,27 +2,34 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getDepartment } from '../api/departments';
-import { listEmployees } from '../api/employees';
+import { deleteEmployee, listEmployees } from '../api/employees';
+import { useAuth } from '../context/useAuth';
 import Pager from '../components/Pager';
 
 const PAGE_SIZE = 10;
 
 export default function DepartmentDetailPage() {
   const { slug } = useParams();
+  const { user } = useAuth();
   const [department, setDepartment] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [meta, setMeta] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [cursor, setCursor] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  function fetchEmployees(cursor) {
+  const canDelete = user.position === 'admin';
+
+  function fetchEmployees(nextCursor) {
     setLoading(true);
+    setCursor(nextCursor ?? null);
 
     listEmployees({
       department_slug: slug,
       name: search || undefined,
       per_page: PAGE_SIZE,
-      cursor: cursor ?? undefined,
+      cursor: nextCursor ?? undefined,
     })
       .then((res) => {
         setEmployees(res.data);
@@ -54,8 +61,22 @@ export default function DepartmentDetailPage() {
     fetchEmployees(meta.prev_cursor);
   }
 
-  function stubAction(message) {
-    return () => toast.info(message);
+  async function handleDelete(employee) {
+    if (!window.confirm(`Xóa nhân viên "${employee.name}"?`)) {
+      return;
+    }
+
+    setDeletingId(employee.id);
+
+    try {
+      await deleteEmployee(employee.id);
+      toast.success('Xóa nhân viên thành công.');
+      fetchEmployees(cursor);
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   if (!department) {
@@ -127,13 +148,16 @@ export default function DepartmentDetailPage() {
                       >
                         Xem chi tiết
                       </Link>
-                      <button
-                        type="button"
-                        onClick={stubAction('Chức năng xóa đang được phát triển.')}
-                        className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                      >
-                        Xóa
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(employee)}
+                          disabled={deletingId === employee.id}
+                          className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
+                        >
+                          {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

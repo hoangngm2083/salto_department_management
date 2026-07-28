@@ -11,3 +11,7 @@ export async function getEmployee(id) {
 
   return data.data;
 }
+
+export async function deleteEmployee(id) {
+  await http.delete(`/employees/${id}`);
+}
