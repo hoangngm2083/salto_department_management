@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { listDepartments } from '../api/departments';
 import { deleteEmployee, listEmployees } from '../api/employees';
 import { ROLE_LABELS } from '../lib/role-labels';
+import ImportEmployeesModal from '../components/ImportEmployeesModal';
 import Pager from '../components/Pager';
 
 const PAGE_SIZE = 15;
@@ -17,6 +18,7 @@ export default function EmployeesListPage() {
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     listDepartments({ status: 'all', per_page: 100 }).then((res) => setDepartments(res.data));
@@ -74,7 +76,16 @@ export default function EmployeesListPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold text-gray-900">Danh sách người dùng</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">Danh sách người dùng</h1>
+        <button
+          type="button"
+          onClick={() => setShowImport(true)}
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+        >
+          Nhập từ CSV
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-3">
         <input
@@ -167,6 +178,13 @@ export default function EmployeesListPage() {
         onPrev={handlePrev}
         onNext={handleNext}
       />
+
+      {showImport && (
+        <ImportEmployeesModal
+          onClose={() => setShowImport(false)}
+          onImported={() => fetchEmployees(cursor)}
+        />
+      )}
     </div>
   );
 }
