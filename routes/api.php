@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\EmployeeController;
+use App\Http\Controllers\Api\V1\ImportController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
@@ -29,4 +30,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('store', 'abilities:employees:create')
         ->middlewareFor('update', 'abilities:employees:update')
         ->middlewareFor('destroy', 'abilities:employees:delete');
+
+    Route::post('imports', [ImportController::class, 'store'])->middleware('abilities:imports:create');
+    Route::get('imports/{import}', [ImportController::class, 'show'])->middleware('abilities:imports:read');
 });
