@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Import\Handlers\DepartmentImportHandler;
+use App\Services\Import\Handlers\EmployeeImportHandler;
 
 return [
 
@@ -80,6 +81,7 @@ return [
 
     'handlers' => [
         'department' => DepartmentImportHandler::class,
+        'employee' => EmployeeImportHandler::class,
     ],
 
 ];

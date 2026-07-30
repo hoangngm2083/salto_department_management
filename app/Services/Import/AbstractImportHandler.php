@@ -8,6 +8,7 @@ use App\Models\Import;
 use App\Models\ImportError;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -288,7 +289,11 @@ abstract class AbstractImportHandler
 
             $updated++;
 
-            if ($existingRecord->only(array_keys($attributes)) !== $attributes) {
+            // Compare raw database values, not casted model attributes (e.g. `birthday` -> Carbon),
+            // to avoid false positives when detecting changes.
+            $existingRaw = Arr::only($existingRecord->getAttributes(), array_keys($attributes));
+
+            if ($existingRaw !== $attributes) {
                 $upsertRows[] = [$this->businessKey() => $keyValue, ...$attributes];
             }
         }
