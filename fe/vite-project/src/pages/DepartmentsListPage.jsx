@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { deleteDepartment, listDepartments, updateDepartment } from '../api/departments';
+import ImportDepartmentsModal from '../components/ImportDepartmentsModal';
 import Pager from '../components/Pager';
 
 const STATUS_OPTIONS = [
@@ -24,6 +25,7 @@ export default function DepartmentsListPage() {
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deletingSlug, setDeletingSlug] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   function fetchPage(nextCursor) {
     setLoading(true);
@@ -100,7 +102,16 @@ export default function DepartmentsListPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold text-gray-900">Danh sách phòng ban</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">Danh sách phòng ban</h1>
+        <button
+          type="button"
+          onClick={() => setShowImport(true)}
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+        >
+          Nhập từ CSV
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-3">
         <input
@@ -248,6 +259,13 @@ export default function DepartmentsListPage() {
         onPrev={handlePrev}
         onNext={handleNext}
       />
+
+      {showImport && (
+        <ImportDepartmentsModal
+          onClose={() => setShowImport(false)}
+          onImported={() => fetchPage(cursor)}
+        />
+      )}
     </div>
   );
 }
