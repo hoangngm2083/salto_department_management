@@ -70,6 +70,15 @@ abstract class AbstractImportHandler
      */
     abstract protected function bulkUpsert(array $rows): void;
 
+    /**
+     * @param  array<string, string|null>  $row
+     * @return array<string, string|null>
+     */
+    protected function normalizeRow(array $row): array
+    {
+        return $row;
+    }
+
     public function run(Import $import): void
     {
         $import->update([
@@ -136,6 +145,7 @@ abstract class AbstractImportHandler
             foreach ($reader->readRange($startByte, $rowCount, $firstRowNumber) as $rowNumber => $row) {
                 // CSV has no native null — a blank cell is an empty string, treat it as absent.
                 $row = array_map(static fn (?string $value): ?string => $value === '' ? null : $value, $row);
+                $row = $this->normalizeRow($row);
 
                 $validator = Validator::make($row, $this->rowRules($row));
 

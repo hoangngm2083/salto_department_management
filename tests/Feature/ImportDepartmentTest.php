@@ -75,6 +75,39 @@ test('importDepartments_validCsvNewSlugs_departmentsCreated', function () {
     $this->assertDatabaseHas('departments', ['slug' => 'marketing', 'name' => 'Marketing']);
 });
 
+test('importDepartments_missingSlug_generatesSlugFromName', function () {
+    // Arrange
+    config(['queue.default' => 'database']);
+    $csv = departmentImportCsv([
+        ['Human Resources', '', 'People operations', 'active'],
+    ]);
+    $file = UploadedFile::fake()->createWithContent('departments.csv', $csv);
+
+    // Act
+    $response = $this->postJson('/api/imports', ['type' => 'department', 'file' => $file]);
+    $importId = $response->json('data.import_id');
+    $this->artisan('queue:work', ['--queue' => config('imports.queue'), '--stop-when-empty' => true])
+        ->assertExitCode(0);
+
+    // Assert
+    $response->assertStatus(202)
+        ->assertJsonPath('success', true);
+
+    $this->assertDatabaseHas('imports', [
+        'id' => $importId,
+        'status' => 'completed',
+        'total' => 1,
+        'created_count' => 1,
+        'updated_count' => 0,
+        'failed_count' => 0,
+    ]);
+    $this->assertDatabaseHas('departments', [
+        'slug' => 'human-resources',
+        'name' => 'Human Resources',
+        'description' => 'People operations',
+    ]);
+});
+
 test('importDepartments_validCsvExistingSlugs_departmentsUpdated', function () {
     // Arrange
     Department::factory()->create([

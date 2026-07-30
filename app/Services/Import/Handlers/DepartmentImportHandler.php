@@ -5,6 +5,7 @@ namespace App\Services\Import\Handlers;
 use App\Models\Department;
 use App\Services\Import\AbstractImportHandler;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class DepartmentImportHandler extends AbstractImportHandler
@@ -34,6 +35,21 @@ class DepartmentImportHandler extends AbstractImportHandler
             'description' => ['nullable', 'string'],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
         ];
+    }
+
+    /**
+     * @param  array<string, string|null>  $row
+     * @return array<string, string|null>
+     */
+    protected function normalizeRow(array $row): array
+    {
+        if (($row['slug'] ?? null) !== null || ($row['name'] ?? null) === null) {
+            return $row;
+        }
+
+        $row['slug'] = Str::slug($row['name']);
+
+        return $row;
     }
 
     /**

@@ -77,6 +77,17 @@ test('rowRules_nullDescriptionAndStatus_passesValidation', function () {
     expect($validator->fails())->toBeFalse();
 });
 
+test('normalizeRow_missingSlug_generatesFromName', function () {
+    $handler = new DepartmentImportHandler;
+    $row = ['name' => 'Human Resources', 'slug' => null, 'description' => null, 'status' => 'active'];
+
+    $normalized = callHandlerMethod($handler, 'normalizeRow', [$row]);
+    $validator = Validator::make($normalized, callHandlerMethod($handler, 'rowRules', [$normalized]));
+
+    expect($normalized['slug'])->toBe('human-resources')
+        ->and($validator->fails())->toBeFalse();
+});
+
 test('rowRules_statusOutsideAllowedValues_fails', function () {
     $handler = new DepartmentImportHandler;
     $row = ['name' => 'Engineering', 'slug' => 'engineering', 'description' => null, 'status' => 'archived'];
