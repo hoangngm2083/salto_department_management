@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { deleteDepartment, listDepartments, updateDepartment } from '../api/departments';
+import { exportDepartments } from '../api/exports';
 import ImportDepartmentsModal from '../components/ImportDepartmentsModal';
 import Pager from '../components/Pager';
 
@@ -26,6 +27,7 @@ export default function DepartmentsListPage() {
   const [saving, setSaving] = useState(false);
   const [deletingSlug, setDeletingSlug] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   function fetchPage(nextCursor) {
     setLoading(true);
@@ -96,6 +98,18 @@ export default function DepartmentsListPage() {
     }
   }
 
+  async function handleExport() {
+    setExporting(true);
+
+    try {
+      await exportDepartments({ status });
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const filtered = departments.filter((d) =>
     d.name.toLowerCase().includes(search.trim().toLowerCase())
   );
@@ -104,13 +118,23 @@ export default function DepartmentsListPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Danh sách phòng ban</h1>
-        <button
-          type="button"
-          onClick={() => setShowImport(true)}
-          className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
-        >
-          Nhập từ CSV
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
+          >
+            {exporting ? 'Đang xuất...' : 'Xuất CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+          >
+            Nhập từ CSV
+          </button>
+        </div>
       </div>
 
       <div className="mb-4 flex gap-3">

@@ -25,7 +25,7 @@ let isRedirectingToLogin = false;
 
 http.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const { response } = error;
 
     if (!response) {
@@ -36,7 +36,16 @@ http.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const { status, data } = response;
+    // A request made with responseType: 'blob' (e.g. CSV export downloads)
+    // still gets its error body back as a Blob, even when the server sent
+    // JSON. Parse it back so the messages below aren't just "undefined".
+    let { data } = response;
+
+    if (data instanceof Blob && data.type.includes('json')) {
+      data = JSON.parse(await data.text());
+    }
+
+    const { status } = response;
     const message = data?.message || error.message || 'Something went wrong.';
 
     if (status === 401) {
