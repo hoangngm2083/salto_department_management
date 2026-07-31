@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\EmployeeController;
+use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\ImportController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,4 +34,6 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('imports', [ImportController::class, 'store'])->middleware('abilities:imports:create');
     Route::get('imports/{import}', [ImportController::class, 'show'])->middleware('abilities:imports:read');
+
+    Route::get('exports', [ExportController::class, 'download'])->middleware('abilities:exports:read');
 });
