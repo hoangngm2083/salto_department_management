@@ -48,11 +48,17 @@ class AuthService
                 'employees:update',
                 'departments:read',
                 'departments:update',
+                'leave-requests:read',
+                'leave-requests:create',
+                'leave-requests:update',
             ],
             default => [
                 'profile:read',
                 'employees:read',
                 'employees:update',
+                'leave-requests:read',
+                'leave-requests:create',
+                'leave-requests:update',
             ],
         };
     }

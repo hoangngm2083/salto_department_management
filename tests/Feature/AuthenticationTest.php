@@ -56,6 +56,9 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'employees:update',
         'departments:read',
         'departments:update',
+        'leave-requests:read',
+        'leave-requests:create',
+        'leave-requests:update',
     ]);
 });
 
@@ -81,6 +84,9 @@ test('login_employeeCredentials_abilitiesPersisted', function () {
         'profile:read',
         'employees:read',
         'employees:update',
+        'leave-requests:read',
+        'leave-requests:create',
+        'leave-requests:update',
     ]);
 });
 

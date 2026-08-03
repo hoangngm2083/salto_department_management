@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\ImportController;
+use App\Http\Controllers\Api\V1\LeaveRequestController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
@@ -31,6 +32,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('store', 'abilities:employees:create')
         ->middlewareFor('update', 'abilities:employees:update')
         ->middlewareFor('destroy', 'abilities:employees:delete');
+
+    Route::apiResource('leave-requests', LeaveRequestController::class)
+        ->only(['index', 'store', 'show', 'update'])
+        ->middlewareFor('index', 'abilities:leave-requests:read')
+        ->middlewareFor('show', 'abilities:leave-requests:read')
+        ->middlewareFor('store', 'abilities:leave-requests:create')
+        ->middlewareFor('update', 'abilities:leave-requests:update');
 
     Route::post('imports', [ImportController::class, 'store'])->middleware('abilities:imports:create');
     Route::get('imports/{import}', [ImportController::class, 'show'])->middleware('abilities:imports:read');
