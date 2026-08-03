@@ -3,16 +3,14 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { deleteDepartment, listDepartments, updateDepartment } from '../api/departments';
 import { exportDepartments } from '../api/exports';
+import CreateDepartmentModal from '../components/CreateDepartmentModal';
 import ImportDepartmentsModal from '../components/ImportDepartmentsModal';
 import Pager from '../components/Pager';
+import { DEPARTMENT_STATUS_OPTIONS } from '../lib/department-status';
 
-const STATUS_OPTIONS = [
-  { value: 'active', label: 'Đang hoạt động' },
-  { value: 'inactive', label: 'Ngừng hoạt động' },
-  { value: 'all', label: 'Tất cả' },
-];
+const STATUS_OPTIONS = [...DEPARTMENT_STATUS_OPTIONS, { value: 'all', label: 'Tất cả' }];
 
-const EDITABLE_STATUS_OPTIONS = STATUS_OPTIONS.filter((opt) => opt.value !== 'all');
+const EDITABLE_STATUS_OPTIONS = DEPARTMENT_STATUS_OPTIONS;
 
 export default function DepartmentsListPage() {
   const [status, setStatus] = useState('active');
@@ -27,6 +25,7 @@ export default function DepartmentsListPage() {
   const [saving, setSaving] = useState(false);
   const [deletingSlug, setDeletingSlug] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   function fetchPage(nextCursor) {
@@ -130,9 +129,16 @@ export default function DepartmentsListPage() {
           <button
             type="button"
             onClick={() => setShowImport(true)}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
             Nhập từ CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+          >
+            Thêm phòng ban
           </button>
         </div>
       </div>
@@ -288,6 +294,13 @@ export default function DepartmentsListPage() {
         <ImportDepartmentsModal
           onClose={() => setShowImport(false)}
           onImported={() => fetchPage(cursor)}
+        />
+      )}
+
+      {showCreate && (
+        <CreateDepartmentModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => fetchPage(cursor)}
         />
       )}
     </div>

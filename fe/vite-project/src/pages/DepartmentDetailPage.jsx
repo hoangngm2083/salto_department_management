@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getDepartment } from '../api/departments';
+import { getDepartment, updateDepartment } from '../api/departments';
 import { deleteEmployee, listEmployees } from '../api/employees';
 import { useAuth } from '../context/useAuth';
+import BackLink from '../components/BackLink';
 import Pager from '../components/Pager';
+import { DEPARTMENT_STATUS_OPTIONS } from '../lib/department-status';
 
 const PAGE_SIZE = 10;
 
 export default function DepartmentDetailPage() {
   const { slug } = useParams();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, updateUser } = useAuth();
   const [department, setDepartment] = useState(null);
+  const [loadError, setLoadError] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [meta, setMeta] = useState({});
   const [loading, setLoading] = useState(true);
@@ -19,6 +23,12 @@ export default function DepartmentDetailPage() {
   const [cursor, setCursor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const isAdmin = user.position === 'admin';
+  const canEdit = user.position === 'admin' || user.position === 'manager';
   const canDelete = user.position === 'admin';
 
   function fetchEmployees(nextCursor) {
@@ -41,9 +51,23 @@ export default function DepartmentDetailPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
     setDepartment(null);
+    setLoadError(false);
     setSearch('');
 
-    getDepartment(slug).then(setDepartment);
+    getDepartment(slug)
+      .then(setDepartment)
+      .catch((err) => {
+        const status = err.response?.status;
+
+        if (status === 403) {
+          navigate('/403', { replace: true });
+        } else if (status === 404) {
+          navigate('/404', { replace: true });
+        } else {
+          setLoadError(true);
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   useEffect(() => {
@@ -79,22 +103,143 @@ export default function DepartmentDetailPage() {
     }
   }
 
+  function startEditing() {
+    setDraft({
+      name: department.name,
+      description: department.description ?? '',
+      status: department.status,
+    });
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraft(null);
+    setEditing(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+
+    try {
+      const updated = await updateDepartment(slug, draft);
+      setEditing(false);
+      setDraft(null);
+
+      // The manager's own department_slug (used by the header nav and
+      // post-login redirect) would otherwise stay stale until next reload.
+      if (user.position === 'manager' && user.department_id === updated.id) {
+        updateUser({ ...user, department_slug: updated.slug });
+      }
+
+      if (updated.slug !== slug) {
+        toast.success('Cập nhật phòng ban thành công. Đã cập nhật URL mới.');
+        navigate(`/departments/${updated.slug}`, { replace: true });
+      } else {
+        toast.success('Cập nhật phòng ban thành công.');
+        setDepartment(updated);
+      }
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loadError) {
+    return <p className="text-red-600">Không thể tải thông tin phòng ban.</p>;
+  }
+
   if (!department) {
     return <p className="text-gray-500">Đang tải...</p>;
   }
 
   return (
     <div>
-      <Link to="/departments" className="mb-4 inline-block text-sm text-gray-600 hover:underline">
-        &larr; Quay lại danh sách phòng ban
-      </Link>
+      {isAdmin && (
+        <BackLink fallback="/departments" className="mb-4 inline-block text-sm text-gray-600 hover:underline">
+          &larr; Trang trước
+        </BackLink>
+      )}
 
       <div className="mb-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-gray-900">{department.name}</h1>
-        <p className="mt-1 text-sm text-gray-500">{department.description || 'Không có mô tả.'}</p>
-        <span className="mt-3 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-          {department.status}
-        </span>
+        {editing ? (
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Tên phòng ban</span>
+              <input
+                type="text"
+                required
+                maxLength={255}
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Mô tả</span>
+              <textarea
+                rows={3}
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Trạng thái</span>
+              <select
+                value={draft.status}
+                onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                {DEPARTMENT_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={saving}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
+              >
+                {saving ? 'Đang lưu...' : 'Lưu'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-start justify-between">
+              <h1 className="text-xl font-semibold text-gray-900">{department.name}</h1>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+                >
+                  Cập nhật
+                </button>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-gray-500">{department.description || 'Không có mô tả.'}</p>
+            <span className="mt-3 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+              {department.status}
+            </span>
+          </>
+        )}
       </div>
 
       <h2 className="mb-3 text-lg font-medium text-gray-900">Nhân viên</h2>
