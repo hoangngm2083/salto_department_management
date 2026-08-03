@@ -12,6 +12,12 @@ export async function getEmployee(id) {
   return data.data;
 }
 
+export async function createEmployee(payload) {
+  const { data } = await http.post('/employees', payload);
+
+  return data.data;
+}
+
 export async function updateEmployee(id, payload) {
   const { data } = await http.put(`/employees/${id}`, payload);
 

@@ -4,13 +4,18 @@ import { toast } from 'sonner';
 import { listDepartments } from '../api/departments';
 import { deleteEmployee, listEmployees } from '../api/employees';
 import { exportEmployees } from '../api/exports';
+import { useAuth } from '../context/useAuth';
 import { ROLE_LABELS } from '../lib/role-labels';
+import CreateEmployeeModal from '../components/CreateEmployeeModal';
 import ImportEmployeesModal from '../components/ImportEmployeesModal';
 import Pager from '../components/Pager';
 
 const PAGE_SIZE = 15;
 
 export default function EmployeesListPage() {
+  const { user } = useAuth();
+  const isAdmin = user.position === 'admin';
+
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [departments, setDepartments] = useState([]);
@@ -20,10 +25,17 @@ export default function EmployeesListPage() {
   const [cursor, setCursor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    listDepartments({ status: 'all', per_page: 100 }).then((res) => setDepartments(res.data));
+    // A manager can't call GET /departments at all (admin-only on BE) - skip the
+    // fetch entirely rather than firing a doomed request for a filter they'd
+    // never see anyway.
+    if (isAdmin) {
+      listDepartments({ status: 'all', per_page: 100 }).then((res) => setDepartments(res.data));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function fetchEmployees(nextCursor) {
@@ -93,20 +105,31 @@ export default function EmployeesListPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Danh sách người dùng</h1>
         <div className="flex gap-2">
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
+              >
+                {exporting ? 'Đang xuất...' : 'Xuất CSV'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Nhập từ CSV
+              </button>
+            </>
+          )}
           <button
             type="button"
-            onClick={handleExport}
-            disabled={exporting}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
-          >
-            {exporting ? 'Đang xuất...' : 'Xuất CSV'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
+            onClick={() => setShowCreate(true)}
             className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
           >
-            Nhập từ CSV
+            Thêm nhân viên
           </button>
         </div>
       </div>
@@ -119,18 +142,20 @@ export default function EmployeesListPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-64 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
         />
-        <select
-          value={departmentId}
-          onChange={(e) => setDepartmentId(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">Tất cả phòng ban</option>
-          {departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
-          ))}
-        </select>
+        {isAdmin && (
+          <select
+            value={departmentId}
+            onChange={(e) => setDepartmentId(e.target.value)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          >
+            <option value="">Tất cả phòng ban</option>
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -180,14 +205,16 @@ export default function EmployeesListPage() {
                       >
                         Xem chi tiết
                       </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(employee)}
-                        disabled={deletingId === employee.id}
-                        className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
-                      >
-                        {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
-                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(employee)}
+                          disabled={deletingId === employee.id}
+                          className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
+                        >
+                          {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -207,6 +234,13 @@ export default function EmployeesListPage() {
         <ImportEmployeesModal
           onClose={() => setShowImport(false)}
           onImported={() => fetchEmployees(cursor)}
+        />
+      )}
+
+      {showCreate && (
+        <CreateEmployeeModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => fetchEmployees(cursor)}
         />
       )}
     </div>

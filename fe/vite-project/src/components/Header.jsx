@@ -2,10 +2,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { beginLogoutGuard } from '../lib/auth-storage';
 import { ROLE_LABELS } from '../lib/role-labels';
+import { headerNavItems } from '../lib/role-redirect';
 
 export default function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const navItems = headerNavItems(user);
 
   async function handleLogout() {
     beginLogoutGuard();
@@ -25,14 +27,13 @@ export default function Header() {
       <div className="flex items-center gap-6">
         <span className="text-lg font-semibold text-gray-900">Department Management</span>
 
-        {user?.position === 'admin' && (
+        {navItems.length > 0 && (
           <nav className="flex items-center gap-4 text-sm font-medium text-gray-600">
-            <Link to="/departments" className="hover:text-gray-900">
-              Phòng ban
-            </Link>
-            <Link to="/employees" className="hover:text-gray-900">
-              Người dùng
-            </Link>
+            {navItems.map((item) => (
+              <Link key={item.to} to={item.to} className="hover:text-gray-900">
+                {item.label}
+              </Link>
+            ))}
           </nav>
         )}
       </div>

@@ -3,9 +3,7 @@ import { toast } from 'sonner';
 import { listDepartments } from '../api/departments';
 import { updateEmployee } from '../api/employees';
 import { useAuth } from '../context/useAuth';
-import { ROLE_LABELS } from '../lib/role-labels';
-
-const POSITION_OPTIONS = ['employee', 'manager', 'admin'];
+import { POSITION_OPTIONS, ROLE_LABELS } from '../lib/role-labels';
 
 export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
   const { user: actor, updateUser } = useAuth();
