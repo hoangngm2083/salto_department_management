@@ -13,6 +13,13 @@ export function roleHomePath(employee) {
   }
 }
 
+const NAV = {
+  departments: { to: '/departments', label: 'Phòng ban' },
+  employees: { to: '/employees', label: 'Người dùng' },
+  leaveRequests: { to: '/leave-requests', label: 'Đơn nghỉ phép' },
+  profile: { to: '/me', label: 'Hồ sơ' },
+};
+
 /**
  * @return {{to: string, label: string}[]}
  */
@@ -23,16 +30,14 @@ export function headerNavItems(employee) {
 
   switch (employee.position) {
     case 'admin':
-      return [
-        { to: '/departments', label: 'Phòng ban' },
-        { to: '/employees', label: 'Người dùng' },
-      ];
+      return [NAV.departments, NAV.employees, NAV.leaveRequests];
     case 'manager':
       return [
         { to: roleHomePath(employee), label: 'Phòng ban của tôi' },
-        { to: '/employees', label: 'Người dùng' },
+        NAV.employees,
+        NAV.leaveRequests,
       ];
     default:
-      return [{ to: '/me', label: 'Hồ sơ' }];
+      return [NAV.profile, NAV.leaveRequests];
   }
 }

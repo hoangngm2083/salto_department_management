@@ -9,6 +9,7 @@ import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import DepartmentsListPage from './pages/DepartmentsListPage';
 import DepartmentDetailPage from './pages/DepartmentDetailPage';
 import EmployeesListPage from './pages/EmployeesListPage';
+import LeaveRequestsListPage from './pages/LeaveRequestsListPage';
 import StatusPage from './pages/StatusPage';
 
 function HomeRedirect() {
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/me" element={<MePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
+          <Route path="/leave-requests" element={<LeaveRequestsListPage />} />
           <Route
             path="/403"
             element={
