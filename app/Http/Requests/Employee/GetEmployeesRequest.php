@@ -17,23 +17,29 @@ class GetEmployeesRequest extends FormRequest
     }
 
     /**
-     * Normalize position from comma-separated string / JSON into an array.
+     * Normalize position from comma-separated string / JSON into an array,
+     * and force department-scoped filters for managers.
      *
      * Supports:
      * - ?position=employee,manager
      */
     protected function prepareForValidation(): void
     {
-        if (! $this->filled('position') || ! is_string($this->position)) {
-            return;
+        if ($this->filled('position') && is_string($this->position)) {
+            $this->merge([
+                'position' => array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', $this->position)
+                ))),
+            ]);
         }
 
-        $this->merge([
-            'position' => array_values(array_filter(array_map(
-                'trim',
-                explode(',', $this->position)
-            ))),
-        ]);
+        if ($this->user()?->position === 'manager') {
+            $this->merge([
+                'department_id' => $this->user()->department_id,
+                'department_slug' => null,
+            ]);
+        }
     }
 
     /**

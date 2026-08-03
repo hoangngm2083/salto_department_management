@@ -13,7 +13,7 @@ class EmployeePolicy
 
     public function viewAny(Employee $employee): bool
     {
-        return in_array($employee->position, ['employee', 'manager'], true);
+        return $employee->position === 'manager';
     }
 
     public function view(Employee $employee, Employee $subject): bool

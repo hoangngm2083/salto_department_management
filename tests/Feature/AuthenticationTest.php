@@ -59,6 +59,31 @@ test('login_managerCredentials_abilitiesPersisted', function () {
     ]);
 });
 
+test('login_employeeCredentials_abilitiesPersisted', function () {
+    // Arrange
+    $employee = Employee::factory()->create([
+        'email' => 'employee@example.com',
+        'password' => 'password',
+        'position' => 'employee',
+    ]);
+
+    // Act
+    $response = $this->postJson('/api/auth/login', [
+        'email' => $employee->email,
+        'password' => 'password',
+        'device_name' => 'pest',
+    ]);
+
+    // Assert
+    $response->assertSuccessful();
+
+    expect($employee->tokens()->latest('id')->firstOrFail()->abilities)->toBe([
+        'profile:read',
+        'employees:read',
+        'employees:update',
+    ]);
+});
+
 test('login_invalidCredentials_unauthorized', function () {
     // Arrange
     $employee = Employee::factory()->create([

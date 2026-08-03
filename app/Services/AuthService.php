@@ -53,7 +53,6 @@ class AuthService
                 'profile:read',
                 'employees:read',
                 'employees:update',
-                'departments:read',
             ],
         };
     }

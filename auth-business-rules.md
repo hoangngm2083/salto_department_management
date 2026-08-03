@@ -5,14 +5,14 @@ Employees
   - Full CRUD.
   - Can assign departments.
   - Can change roles.
+  - Import,Export
 - Manager:
-  - Can list and view employees in their own department.
-  - Can create employees in their own department.
+  - Can view employees in their own department
+  - Can create employees in their own department (auto assign department, manager can't change).
   - Can update employees in their own department.
   - Cannot delete employees.
-  - Cannot change employee roles.
+  - Cannot change employee roles, department.
 - Employee:
-  - Can list employees.
   - Can view only their own profile.
   - Can update only their own profile.
   - Cannot change role or department.
@@ -21,10 +21,10 @@ Employees
 Departments
 - Admin:
   - Full CRUD.
+  - Import,Export
 - Manager:
-  - Can list departments.
-  - Can view any department (or only their own, depending on business requirements).
+  - Can view only their own department
   - Can update only the department they belong to.
   - Cannot create or delete departments.
 - Employee:
-  - Read-only access.
+  - none
