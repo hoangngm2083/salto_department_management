@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { getEmployee } from '../api/employees';
 import { useAuth } from '../context/useAuth';
+import BackLink from '../components/BackLink';
 import EmployeeProfileView from '../components/EmployeeProfileView';
+import { roleHomePath } from '../lib/role-redirect';
 
 export default function EmployeeProfilePage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,8 +21,19 @@ export default function EmployeeProfilePage() {
 
     getEmployee(id)
       .then(setEmployee)
-      .catch(() => setError(true))
+      .catch((err) => {
+        const status = err.response?.status;
+
+        if (status === 403) {
+          navigate('/403', { replace: true });
+        } else if (status === 404) {
+          navigate('/404', { replace: true });
+        } else {
+          setError(true);
+        }
+      })
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (loading) {
@@ -35,11 +49,20 @@ export default function EmployeeProfilePage() {
     employee.id === user.id ||
     (user.position === 'manager' && employee.department_slug === user.department_slug);
 
+  // Only admin/manager can reach /departments/:slug at all - a plain employee
+  // (self-view only) has nowhere for this link to actually lead.
+  const canViewDepartment = user.position === 'admin' || user.position === 'manager';
+
   return (
     <div>
-      <Link to={`/departments/${employee.department_slug}`} className="mb-4 inline-block text-sm text-gray-600 hover:underline">
-        &larr; Quay lại phòng ban
-      </Link>
+      {canViewDepartment && (
+        <BackLink
+          fallback={roleHomePath(user)}
+          className="mb-4 inline-block text-sm text-gray-600 hover:underline"
+        >
+          &larr; Trang trước
+        </BackLink>
+      )}
       <EmployeeProfileView employee={employee} canEdit={canEdit} onSaved={setEmployee} />
     </div>
   );

@@ -1,7 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { saveRedirectPath } from '../lib/auth-storage';
-import { roleHomePath } from '../lib/role-redirect';
 
 export default function ProtectedRoute({ roles }) {
   const { user, loading } = useAuth();
@@ -27,7 +26,7 @@ export default function ProtectedRoute({ roles }) {
   }
 
   if (roles && !roles.includes(user.position)) {
-    return <Navigate to={roleHomePath(user)} replace />;
+    return <Navigate to="/403" replace />;
   }
 
   return <Outlet />;

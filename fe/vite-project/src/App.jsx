@@ -9,6 +9,7 @@ import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import DepartmentsListPage from './pages/DepartmentsListPage';
 import DepartmentDetailPage from './pages/DepartmentDetailPage';
 import EmployeesListPage from './pages/EmployeesListPage';
+import StatusPage from './pages/StatusPage';
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -26,19 +27,42 @@ export default function App() {
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/me" element={<MePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
+          <Route
+            path="/403"
+            element={
+              <StatusPage
+                code={403}
+                title="Không có quyền truy cập"
+                message="Bạn không có quyền xem nội dung này."
+              />
+            }
+          />
+          <Route
+            path="/404"
+            element={
+              <StatusPage
+                code={404}
+                title="Không tìm thấy"
+                message="Nội dung bạn tìm không tồn tại hoặc đã bị xoá."
+              />
+            }
+          />
 
           <Route element={<ProtectedRoute roles={['admin']} />}>
             <Route path="/departments" element={<DepartmentsListPage />} />
-            <Route path="/employees" element={<EmployeesListPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={['admin', 'manager']} />}>
             <Route path="/departments/:slug" element={<DepartmentDetailPage />} />
+            <Route path="/employees" element={<EmployeesListPage />} />
           </Route>
+
+          {/* Matches any unmatched URL under this pathless layout tree - ProtectedRoute
+              above still gates it first, so an unauthenticated visitor is bounced to
+              /login same as any other route; an authenticated one lands on 404. */}
+          <Route path="*" element={<Navigate to="/404" replace />} />
         </Route>
       </Route>
-
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
