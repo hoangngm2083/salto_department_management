@@ -47,15 +47,17 @@ test('query_positionFilter_returnsOnlyThatPosition', function () {
         ->and($emails)->not->toContain('e@example.com');
 });
 
-test('query_nameFilter_matchesPrefixOnly', function () {
+test('query_nameFilter_matchesAnywhereInName', function () {
     $handler = new EmployeeExportHandler;
     Employee::factory()->create(['name' => 'Alice Nguyen', 'email' => 'alice@example.com']);
     Employee::factory()->create(['name' => 'Bob Alice', 'email' => 'bob@example.com']);
+    Employee::factory()->create(['name' => 'Carol Tran', 'email' => 'carol@example.com']);
 
     $emails = callEmployeeExportHandlerMethod($handler, 'query', [['name' => 'Alice']])->pluck('email');
 
     expect($emails)->toContain('alice@example.com')
-        ->and($emails)->not->toContain('bob@example.com');
+        ->and($emails)->toContain('bob@example.com')
+        ->and($emails)->not->toContain('carol@example.com');
 });
 
 test('query_departmentIdFilter_returnsOnlyThatDepartment', function () {

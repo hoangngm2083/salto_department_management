@@ -42,6 +42,39 @@ test('getEmployees_commaSeparatedPositions_matchingEmployees', function () {
         ->and($response->json('data.data'))->toHaveCount(2);
 });
 
+test('getEmployees_nameMatchesMiddleOfName_matchingEmployees', function () {
+    // Arrange
+    Employee::factory()->create(['position' => 'employee', 'name' => 'Test Manager']);
+    Employee::factory()->create(['position' => 'employee', 'name' => 'Manager Test']);
+    Employee::factory()->create(['position' => 'employee', 'name' => 'Alice Nguyen']);
+
+    // Act
+    $response = $this->getJson('/api/employees?name=Manager');
+
+    // Assert
+    $response->assertSuccessful();
+
+    $names = collect($response->json('data.data'))->pluck('name')->sort()->values()->all();
+
+    expect($names)->toBe(['Manager Test', 'Test Manager']);
+});
+
+test('getEmployees_nameWithLikeWildcard_treatsWildcardLiterally', function () {
+    // Arrange
+    Employee::factory()->create(['position' => 'employee', 'name' => 'Discount 50% Team']);
+    Employee::factory()->create(['position' => 'employee', 'name' => 'Anything At All']);
+
+    // Act
+    $response = $this->getJson('/api/employees?name='.urlencode('50%'));
+
+    // Assert
+    $response->assertSuccessful();
+
+    $names = collect($response->json('data.data'))->pluck('name')->all();
+
+    expect($names)->toBe(['Discount 50% Team']);
+});
+
 test('getEmployees_singlePosition_matchingEmployees', function () {
     // Arrange
     Employee::factory()->create(['position' => 'employee']);

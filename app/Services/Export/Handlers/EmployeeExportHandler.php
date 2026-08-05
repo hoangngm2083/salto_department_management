@@ -27,7 +27,7 @@ class EmployeeExportHandler extends AbstractExportHandler
         return Employee::query()
             ->select(['id', 'department_id', 'name', 'email', 'birthday', 'position'])
             ->with('department:id,slug')
-            ->when($filters['name'] ?? null, fn ($query, $name) => $query->where('name', 'like', "{$name}%"))
+            ->when($filters['name'] ?? null, fn ($query, $name) => $query->nameContains($name))
             ->when($filters['department_id'] ?? null, fn ($query, $departmentId) => $query->where('department_id', $departmentId))
             ->when($filters['department_slug'] ?? null, fn ($query, $slug) => $query->whereRelation('department', 'slug', $slug))
             ->when(

@@ -85,11 +85,12 @@ test('exportEmployees_positionFilter_returnsOnlyThatPosition', function () {
         ->and($emails)->not->toContain('employee@example.com');
 });
 
-test('exportEmployees_nameFilter_matchesPrefixOnly', function () {
+test('exportEmployees_nameFilter_matchesAnywhereInName', function () {
     // Arrange
     $department = Department::factory()->create();
     Employee::factory()->create(['name' => 'Alice Nguyen', 'email' => 'alice@example.com', 'department_id' => $department->id]);
     Employee::factory()->create(['name' => 'Bob Alice', 'email' => 'bob@example.com', 'department_id' => $department->id]);
+    Employee::factory()->create(['name' => 'Carol Tran', 'email' => 'carol@example.com', 'department_id' => $department->id]);
 
     // Act
     $response = $this->get('/api/exports?type=employee&name=Alice');
@@ -98,7 +99,8 @@ test('exportEmployees_nameFilter_matchesPrefixOnly', function () {
     $emails = collect(parseEmployeeExportCsv($response->streamedContent()))->skip(1)->pluck(1);
 
     expect($emails)->toContain('alice@example.com')
-        ->and($emails)->not->toContain('bob@example.com');
+        ->and($emails)->toContain('bob@example.com')
+        ->and($emails)->not->toContain('carol@example.com');
 });
 
 test('exportEmployees_departmentIdFilter_returnsOnlyThatDepartment', function () {
