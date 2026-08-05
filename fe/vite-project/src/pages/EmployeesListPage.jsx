@@ -6,11 +6,10 @@ import { deleteEmployee, listEmployees } from '../api/employees';
 import { exportEmployees } from '../api/exports';
 import { useAuth } from '../context/useAuth';
 import { ROLE_LABELS } from '../lib/role-labels';
+import useCursorList from '../hooks/useCursorList';
 import CreateEmployeeModal from '../components/CreateEmployeeModal';
 import ImportEmployeesModal from '../components/ImportEmployeesModal';
 import Pager from '../components/Pager';
-
-const PAGE_SIZE = 15;
 
 export default function EmployeesListPage() {
   const { user } = useAuth();
@@ -19,14 +18,20 @@ export default function EmployeesListPage() {
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [departments, setDepartments] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [meta, setMeta] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [cursor, setCursor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const { items: employees, meta, loading, refreshing, goToNext, goToPrev, refresh, removeItem } =
+    useCursorList({
+      fetcher: listEmployees,
+      params: {
+        name: search || undefined,
+        department_id: departmentId || undefined,
+      },
+      debounceMs: 300,
+    });
 
   useEffect(() => {
     // A manager can't call GET /departments at all (admin-only on BE) - skip the
@@ -38,38 +43,6 @@ export default function EmployeesListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function fetchEmployees(nextCursor) {
-    setLoading(true);
-    setCursor(nextCursor ?? null);
-
-    listEmployees({
-      name: search || undefined,
-      department_id: departmentId || undefined,
-      per_page: PAGE_SIZE,
-      cursor: nextCursor ?? undefined,
-    })
-      .then((res) => {
-        setEmployees(res.data);
-        setMeta(res.meta);
-      })
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    const timeout = setTimeout(() => fetchEmployees(null), 300);
-
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, departmentId]);
-
-  function handleNext() {
-    fetchEmployees(meta.next_cursor);
-  }
-
-  function handlePrev() {
-    fetchEmployees(meta.prev_cursor);
-  }
-
   async function handleDelete(employee) {
     if (!window.confirm(`Xóa người dùng "${employee.name}"?`)) {
       return;
@@ -80,7 +53,7 @@ export default function EmployeesListPage() {
     try {
       await deleteEmployee(employee.id);
       toast.success('Xóa người dùng thành công.');
-      fetchEmployees(cursor);
+      removeItem(employee.id);
     } catch {
       // http.js interceptor already shows a toast for the error
     } finally {
@@ -169,7 +142,9 @@ export default function EmployeesListPage() {
               <th className="px-4 py-2 font-medium">Hành động</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            className={`transition-opacity duration-150 ${refreshing ? 'opacity-50' : 'opacity-100'}`}
+          >
             {loading && (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
@@ -226,22 +201,16 @@ export default function EmployeesListPage() {
       <Pager
         hasPrev={Boolean(meta.prev_cursor)}
         hasNext={Boolean(meta.next_cursor)}
-        onPrev={handlePrev}
-        onNext={handleNext}
+        onPrev={goToPrev}
+        onNext={goToNext}
       />
 
       {showImport && (
-        <ImportEmployeesModal
-          onClose={() => setShowImport(false)}
-          onImported={() => fetchEmployees(cursor)}
-        />
+        <ImportEmployeesModal onClose={() => setShowImport(false)} onImported={refresh} />
       )}
 
       {showCreate && (
-        <CreateEmployeeModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => fetchEmployees(cursor)}
-        />
+        <CreateEmployeeModal onClose={() => setShowCreate(false)} onCreated={refresh} />
       )}
     </div>
   );

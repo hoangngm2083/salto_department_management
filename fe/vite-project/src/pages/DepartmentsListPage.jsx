@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { deleteDepartment, listDepartments, updateDepartment } from '../api/departments';
@@ -7,6 +7,7 @@ import CreateDepartmentModal from '../components/CreateDepartmentModal';
 import ImportDepartmentsModal from '../components/ImportDepartmentsModal';
 import Pager from '../components/Pager';
 import { DEPARTMENT_STATUS_OPTIONS } from '../lib/department-status';
+import useCursorList from '../hooks/useCursorList';
 
 const STATUS_OPTIONS = [...DEPARTMENT_STATUS_OPTIONS, { value: 'all', label: 'Tất cả' }];
 
@@ -15,10 +16,22 @@ const EDITABLE_STATUS_OPTIONS = DEPARTMENT_STATUS_OPTIONS;
 export default function DepartmentsListPage() {
   const [status, setStatus] = useState('active');
   const [search, setSearch] = useState('');
-  const [departments, setDepartments] = useState([]);
-  const [meta, setMeta] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [cursor, setCursor] = useState(null);
+
+  const {
+    items: departments,
+    meta,
+    loading,
+    refreshing,
+    goToNext,
+    goToPrev,
+    refresh,
+    replaceItem,
+    removeItem,
+  } = useCursorList({
+    fetcher: listDepartments,
+    params: { status },
+    belongsInList: (department) => status === 'all' || department.status === status,
+  });
 
   const [editingSlug, setEditingSlug] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -27,32 +40,6 @@ export default function DepartmentsListPage() {
   const [showImport, setShowImport] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-  function fetchPage(nextCursor) {
-    setLoading(true);
-    setCursor(nextCursor ?? null);
-
-    listDepartments({ status, per_page: 15, cursor: nextCursor ?? undefined })
-      .then((res) => {
-        setDepartments(res.data);
-        setMeta(res.meta);
-      })
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
-    fetchPage(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
-
-  function handleNext() {
-    fetchPage(meta.next_cursor);
-  }
-
-  function handlePrev() {
-    fetchPage(meta.prev_cursor);
-  }
 
   function startEditing(department) {
     setEditingSlug(department.slug);
@@ -68,10 +55,10 @@ export default function DepartmentsListPage() {
     setSaving(true);
 
     try {
-      await updateDepartment(department.slug, draft);
+      const updated = await updateDepartment(department.slug, draft);
       toast.success('Cập nhật phòng ban thành công.');
       cancelEditing();
-      fetchPage(cursor);
+      replaceItem(updated);
     } catch {
       // http.js interceptor already shows a toast for the error
     } finally {
@@ -89,7 +76,7 @@ export default function DepartmentsListPage() {
     try {
       await deleteDepartment(department.slug);
       toast.success('Xóa phòng ban thành công.');
-      fetchPage(cursor);
+      removeItem(department.id);
     } catch {
       // http.js interceptor already shows a toast for the error
     } finally {
@@ -174,7 +161,9 @@ export default function DepartmentsListPage() {
               <th className="px-4 py-2 font-medium">Hành động</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            className={`transition-opacity duration-150 ${refreshing ? 'opacity-50' : 'opacity-100'}`}
+          >
             {loading && (
               <tr>
                 <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
@@ -286,22 +275,16 @@ export default function DepartmentsListPage() {
       <Pager
         hasPrev={Boolean(meta.prev_cursor)}
         hasNext={Boolean(meta.next_cursor)}
-        onPrev={handlePrev}
-        onNext={handleNext}
+        onPrev={goToPrev}
+        onNext={goToNext}
       />
 
       {showImport && (
-        <ImportDepartmentsModal
-          onClose={() => setShowImport(false)}
-          onImported={() => fetchPage(cursor)}
-        />
+        <ImportDepartmentsModal onClose={() => setShowImport(false)} onImported={refresh} />
       )}
 
       {showCreate && (
-        <CreateDepartmentModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => fetchPage(cursor)}
-        />
+        <CreateDepartmentModal onClose={() => setShowCreate(false)} onCreated={refresh} />
       )}
     </div>
   );

@@ -7,7 +7,9 @@ import { useAuth } from '../context/useAuth';
 import BackLink from '../components/BackLink';
 import Pager from '../components/Pager';
 import { DEPARTMENT_STATUS_OPTIONS } from '../lib/department-status';
+import useCursorList from '../hooks/useCursorList';
 
+/** Overrides VITE_PAGE_SIZE: this table is a section of a detail page, not the page itself. */
 const PAGE_SIZE = 10;
 
 export default function DepartmentDetailPage() {
@@ -16,11 +18,7 @@ export default function DepartmentDetailPage() {
   const { user, updateUser } = useAuth();
   const [department, setDepartment] = useState(null);
   const [loadError, setLoadError] = useState(false);
-  const [employees, setEmployees] = useState([]);
-  const [meta, setMeta] = useState({});
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [cursor, setCursor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   const [editing, setEditing] = useState(false);
@@ -31,22 +29,20 @@ export default function DepartmentDetailPage() {
   const canEdit = user.position === 'admin' || user.position === 'manager';
   const canDelete = user.position === 'admin';
 
-  function fetchEmployees(nextCursor) {
-    setLoading(true);
-    setCursor(nextCursor ?? null);
-
-    listEmployees({
-      department_slug: slug,
-      name: search || undefined,
-      per_page: PAGE_SIZE,
-      cursor: nextCursor ?? undefined,
-    })
-      .then((res) => {
-        setEmployees(res.data);
-        setMeta(res.meta);
-      })
-      .finally(() => setLoading(false));
-  }
+  const {
+    items: employees,
+    meta,
+    loading,
+    refreshing,
+    goToNext,
+    goToPrev,
+    removeItem,
+  } = useCursorList({
+    fetcher: listEmployees,
+    params: { department_slug: slug, name: search || undefined },
+    pageSize: PAGE_SIZE,
+    debounceMs: 300,
+  });
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
@@ -70,21 +66,6 @@ export default function DepartmentDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => fetchEmployees(null), 300);
-
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, search]);
-
-  function handleNext() {
-    fetchEmployees(meta.next_cursor);
-  }
-
-  function handlePrev() {
-    fetchEmployees(meta.prev_cursor);
-  }
-
   async function handleDelete(employee) {
     if (!window.confirm(`Xóa nhân viên "${employee.name}"?`)) {
       return;
@@ -95,7 +76,7 @@ export default function DepartmentDetailPage() {
     try {
       await deleteEmployee(employee.id);
       toast.success('Xóa nhân viên thành công.');
-      fetchEmployees(cursor);
+      removeItem(employee.id);
     } catch {
       // http.js interceptor already shows a toast for the error
     } finally {
@@ -262,7 +243,9 @@ export default function DepartmentDetailPage() {
               <th className="px-4 py-2 font-medium">Hành động</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            className={`transition-opacity duration-150 ${refreshing ? 'opacity-50' : 'opacity-100'}`}
+          >
             {loading && (
               <tr>
                 <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
@@ -314,8 +297,8 @@ export default function DepartmentDetailPage() {
       <Pager
         hasPrev={Boolean(meta.prev_cursor)}
         hasNext={Boolean(meta.next_cursor)}
-        onPrev={handlePrev}
-        onNext={handleNext}
+        onPrev={goToPrev}
+        onNext={goToNext}
       />
     </div>
   );

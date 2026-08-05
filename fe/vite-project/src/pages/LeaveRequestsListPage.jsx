@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { listLeaveRequests, updateLeaveRequestStatus } from '../api/leaveRequests';
 import { useAuth } from '../context/useAuth';
 import { LEAVE_STATUS_BADGE_CLASSES, LEAVE_STATUS_LABELS } from '../lib/leave-request-status';
+import useCursorList from '../hooks/useCursorList';
 import CreateLeaveRequestModal from '../components/CreateLeaveRequestModal';
 import Pager from '../components/Pager';
-
-const PAGE_SIZE = 15;
 
 const STATUS_TOAST_MESSAGES = {
   pending: 'Đã chuyển đơn về trạng thái chờ duyệt.',
@@ -28,43 +27,23 @@ export default function LeaveRequestsListPage() {
   const canReview = user.position === 'manager' || isAdmin;
 
   const [status, setStatus] = useState('');
-  const [requests, setRequests] = useState([]);
-  const [meta, setMeta] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [cursor, setCursor] = useState(null);
   const [actingId, setActingId] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  function fetchRequests(nextCursor) {
-    setLoading(true);
-    setCursor(nextCursor ?? null);
-
-    listLeaveRequests({
-      status: status || undefined,
-      per_page: PAGE_SIZE,
-      cursor: nextCursor ?? undefined,
-    })
-      .then((res) => {
-        setRequests(res.data);
-        setMeta(res.meta);
-      })
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    const timeout = setTimeout(() => fetchRequests(null), 0);
-
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
-
-  function handleNext() {
-    fetchRequests(meta.next_cursor);
-  }
-
-  function handlePrev() {
-    fetchRequests(meta.prev_cursor);
-  }
+  const {
+    items: requests,
+    meta,
+    loading,
+    refreshing,
+    goToNext,
+    goToPrev,
+    refresh,
+    replaceItem,
+  } = useCursorList({
+    fetcher: listLeaveRequests,
+    params: { status: status || undefined },
+    belongsInList: (request) => status === '' || request.status === status,
+  });
 
   async function handleUpdateStatus(leaveRequest, nextStatus) {
     if (nextStatus === 'cancelled' && !window.confirm('Hủy đơn nghỉ phép này?')) {
@@ -74,9 +53,9 @@ export default function LeaveRequestsListPage() {
     setActingId(leaveRequest.id);
 
     try {
-      await updateLeaveRequestStatus(leaveRequest.id, { status: nextStatus });
+      const updated = await updateLeaveRequestStatus(leaveRequest.id, { status: nextStatus });
       toast.success(STATUS_TOAST_MESSAGES[nextStatus]);
-      fetchRequests(cursor);
+      replaceItem(updated);
     } catch {
       // http.js interceptor already shows a toast for the error
     } finally {
@@ -124,7 +103,9 @@ export default function LeaveRequestsListPage() {
               <th className="px-4 py-2 font-medium">Hành động</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            className={`transition-opacity duration-150 ${refreshing ? 'opacity-50' : 'opacity-100'}`}
+          >
             {loading && (
               <tr>
                 <td colSpan={canReview ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
@@ -220,12 +201,12 @@ export default function LeaveRequestsListPage() {
       <Pager
         hasPrev={Boolean(meta.prev_cursor)}
         hasNext={Boolean(meta.next_cursor)}
-        onPrev={handlePrev}
-        onNext={handleNext}
+        onPrev={goToPrev}
+        onNext={goToNext}
       />
 
       {showCreate && (
-        <CreateLeaveRequestModal onClose={() => setShowCreate(false)} onCreated={() => fetchRequests(cursor)} />
+        <CreateLeaveRequestModal onClose={() => setShowCreate(false)} onCreated={refresh} />
       )}
     </div>
   );
