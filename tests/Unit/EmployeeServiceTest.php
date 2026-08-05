@@ -2,6 +2,7 @@
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\Level;
 use App\Services\EmployeeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Pagination\CursorPaginator;
@@ -143,6 +144,34 @@ test('upsertEmployee_existingEmployee_recordUpdated', function () {
         ->and($updated->email)->toBe('after@example.com')
         ->and($updated->position)->toBe('manager')
         ->and($updated->relationLoaded('department'))->toBeTrue();
+});
+
+test('upsertEmployee_clearsManagerEmployeeId_fieldCleared', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['manager_employee_id' => $manager->id]);
+    $admin = Employee::factory()->create(['position' => 'admin']);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $updated = $service->upsert($admin, ['manager_employee_id' => null], $employee);
+
+    // Assert
+    expect($updated->manager_employee_id)->toBeNull();
+});
+
+test('upsertEmployee_managerActorSetsLevelId_fieldIgnored', function () {
+    // Arrange
+    $level = Level::factory()->create();
+    $employee = Employee::factory()->create(['position' => 'employee']);
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $updated = $service->upsert($manager, ['current_level_id' => $level->id], $employee);
+
+    // Assert
+    expect($updated->current_level_id)->toBeNull();
 });
 
 test('deleteEmployee_existingEmployee_recordSoftDeleted', function () {

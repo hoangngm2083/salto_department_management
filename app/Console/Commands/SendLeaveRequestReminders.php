@@ -61,9 +61,9 @@ class SendLeaveRequestReminders extends Command
     private function pendingReminderQuery(): Builder
     {
         return LeaveRequest::query()
-            ->where('status', LeaveRequestStatus::Pending)
-            ->whereNull('reminder_sent_at')
-            ->whereBetween('start_date', [
+            ->where('leave_requests.status', LeaveRequestStatus::Pending)
+            ->whereNull('leave_requests.reminder_sent_at')
+            ->whereBetween('leave_requests.start_date', [
                 today(),
                 today()->addDays(config('leave-requests.reminder_days_before_start')),
             ]);

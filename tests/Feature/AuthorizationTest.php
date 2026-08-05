@@ -258,3 +258,69 @@ test('createLevel_managerToken_forbidden', function () {
     $response->assertForbidden()
         ->assertJsonPath('message', 'Forbidden.');
 });
+
+test('updateEmployee_managerSetsLevelAndManager_fieldsUnchanged', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $manager = Employee::factory()->create([
+        'position' => 'manager',
+        'department_id' => $department->id,
+    ]);
+    $level = Level::factory()->create();
+    $otherEmployee = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create([
+        'position' => 'employee',
+        'department_id' => $department->id,
+    ]);
+    Sanctum::actingAs($manager, ['employees:update']);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'current_level_id' => $level->id,
+        'manager_employee_id' => $otherEmployee->id,
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.current_level_id', null)
+        ->assertJsonPath('data.manager_employee_id', null);
+});
+
+test('updateEmployee_managerSetsStatusOwnDepartment_statusChanged', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $manager = Employee::factory()->create([
+        'position' => 'manager',
+        'department_id' => $department->id,
+    ]);
+    $employee = Employee::factory()->create([
+        'position' => 'employee',
+        'department_id' => $department->id,
+        'status' => 'active',
+    ]);
+    Sanctum::actingAs($manager, ['employees:update']);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'status' => 'inactive',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.status', 'inactive');
+});
+
+test('updateEmployee_employeeSetsOwnStatus_statusUnchanged', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
+    Sanctum::actingAs($employee, ['employees:update']);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'status' => 'resigned',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.status', 'active');
+});

@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Employee;
 
+use App\Enums\EmployeeStatus;
 use App\Models\Employee;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -53,6 +55,18 @@ class UpsertEmployeeRequest extends FormRequest
                 'string',
                 Rule::in(['employee', 'manager', 'admin']),
             ],
+            'current_level_id' => ['nullable', 'integer', 'exists:levels,id'],
+            'manager_employee_id' => [
+                'nullable',
+                'integer',
+                'exists:employees,id',
+                function (string $attribute, mixed $value, Closure $fail) use ($employeeId): void {
+                    if ($employeeId !== null && (int) $value === (int) $employeeId) {
+                        $fail('An employee cannot be their own manager.');
+                    }
+                },
+            ],
+            'status' => ['nullable', Rule::enum(EmployeeStatus::class)],
         ];
     }
 }

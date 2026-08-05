@@ -57,7 +57,7 @@ class EmployeeController extends Controller
     public function show(Employee $employee): JsonResponse
     {
         Gate::authorize('view', $employee);
-        $employee->loadMissing('department:id,name,slug');
+        $employee->loadMissing(['department:id,name,slug', 'currentLevel:id,name,slug', 'manager:id,name']);
 
         return $this->successResponse(
             new EmployeeResource($employee),

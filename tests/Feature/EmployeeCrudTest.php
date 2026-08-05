@@ -2,6 +2,7 @@
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\Level;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -380,4 +381,116 @@ test('getEmployee_deletedId_notFound', function () {
     // Assert
     $response->assertNotFound()
         ->assertJsonPath('success', false);
+});
+
+test('createEmployee_withoutStatus_defaultsToActive', function () {
+    // Arrange
+    $department = Department::factory()->create();
+
+    // Act
+    $response = $this->postJson('/api/employees', [
+        'name' => 'Default Status',
+        'email' => 'default.status@example.com',
+        'password' => 'password123',
+        'department_id' => $department->id,
+        'birthday' => '1995-05-20',
+        'position' => 'employee',
+    ]);
+
+    // Assert
+    $response->assertCreated()
+        ->assertJsonPath('data.status', 'active');
+});
+
+test('updateEmployee_setsCurrentLevelAndManager_fieldsUpdated', function () {
+    // Arrange
+    $level = Level::factory()->create();
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['position' => 'employee']);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'current_level_id' => $level->id,
+        'manager_employee_id' => $manager->id,
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.current_level_id', $level->id)
+        ->assertJsonPath('data.current_level_name', $level->name)
+        ->assertJsonPath('data.manager_employee_id', $manager->id)
+        ->assertJsonPath('data.manager_name', $manager->name);
+
+    $this->assertDatabaseHas('employees', [
+        'id' => $employee->id,
+        'current_level_id' => $level->id,
+        'manager_employee_id' => $manager->id,
+    ]);
+});
+
+test('updateEmployee_clearsManagerEmployeeId_fieldCleared', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['manager_employee_id' => $manager->id]);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'manager_employee_id' => null,
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.manager_employee_id', null);
+
+    $this->assertDatabaseHas('employees', [
+        'id' => $employee->id,
+        'manager_employee_id' => null,
+    ]);
+});
+
+test('updateEmployee_managerEmployeeIdSelfReference_validationError', function () {
+    // Arrange
+    $employee = Employee::factory()->create();
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'manager_employee_id' => $employee->id,
+    ]);
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['manager_employee_id'], 'errors');
+});
+
+test('updateEmployee_unknownCurrentLevelId_validationError', function () {
+    // Arrange
+    $employee = Employee::factory()->create();
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'current_level_id' => 999999,
+    ]);
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['current_level_id'], 'errors');
+});
+
+test('updateEmployee_adminSetsStatus_statusChanged', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['status' => 'active']);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'status' => 'resigned',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.status', 'resigned');
+
+    $this->assertDatabaseHas('employees', [
+        'id' => $employee->id,
+        'status' => 'resigned',
+    ]);
 });

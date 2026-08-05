@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\EmployeeStatus;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -10,12 +11,13 @@ use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'department_id', 'birthday', 'position'])]
+#[Fillable(['name', 'email', 'password', 'department_id', 'birthday', 'position', 'current_level_id', 'manager_employee_id', 'status'])]
 #[Hidden(['password', 'remember_token'])]
 class Employee extends Authenticatable
 {
@@ -29,6 +31,17 @@ class Employee extends Authenticatable
     private const LIKE_ESCAPE_CHARACTER = '!';
 
     /**
+     * Default attribute values, so an in-memory instance (factory ->make(),
+     * `new Employee()`) has the same status the DB column default would give
+     * a persisted row — the enum cast needs a real value, not null.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'status' => 'active',
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -39,12 +52,34 @@ class Employee extends Authenticatable
             'email_verified_at' => 'datetime',
             'birthday' => 'date',
             'password' => 'hashed',
+            'status' => EmployeeStatus::class,
         ];
     }
 
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    public function currentLevel(): BelongsTo
+    {
+        return $this->belongsTo(Level::class, 'current_level_id');
+    }
+
+    /**
+     * @return BelongsTo<Employee, $this>
+     */
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'manager_employee_id');
+    }
+
+    /**
+     * @return HasMany<Employee, $this>
+     */
+    public function directReports(): HasMany
+    {
+        return $this->hasMany(Employee::class, 'manager_employee_id');
     }
 
     /**
