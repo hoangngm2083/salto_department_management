@@ -57,6 +57,7 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'departments:read',
         'departments:update',
         'levels:read',
+        'project-roles:read',
         'leave-requests:read',
         'leave-requests:create',
         'leave-requests:update',

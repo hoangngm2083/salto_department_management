@@ -49,6 +49,7 @@ class AuthService
                 'departments:read',
                 'departments:update',
                 'levels:read',
+                'project-roles:read',
                 'leave-requests:read',
                 'leave-requests:create',
                 'leave-requests:update',
