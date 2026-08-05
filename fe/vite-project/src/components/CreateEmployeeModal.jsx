@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { listDepartments } from '../api/departments';
 import { createEmployee } from '../api/employees';
+import { listLevels } from '../api/levels';
+import EmployeeSearchSelect from './EmployeeSearchSelect';
 import { useAuth } from '../context/useAuth';
 import { POSITION_OPTIONS, ROLE_LABELS } from '../lib/role-labels';
 
@@ -17,14 +19,21 @@ export default function CreateEmployeeModal({ onClose, onCreated }) {
     birthday: '',
     department_id: '',
     position: 'employee',
+    current_level_id: '',
+    manager_employee_id: null,
+    manager_name: null,
   });
   const [departments, setDepartments] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
       listDepartments({ status: 'all', per_page: 100 })
         .then((res) => setDepartments(res.data))
+        .catch(() => {});
+      listLevels({ status: 'all', per_page: 100 })
+        .then((res) => setLevels(res.data))
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -42,6 +51,16 @@ export default function CreateEmployeeModal({ onClose, onCreated }) {
       department_id: isAdmin ? Number(form.department_id) : actor.department_id,
       position: isAdmin ? form.position : 'employee',
     };
+
+    if (isAdmin) {
+      if (form.current_level_id) {
+        payload.current_level_id = Number(form.current_level_id);
+      }
+
+      if (form.manager_employee_id) {
+        payload.manager_employee_id = form.manager_employee_id;
+      }
+    }
 
     try {
       const created = await createEmployee(payload);
@@ -159,7 +178,7 @@ export default function CreateEmployeeModal({ onClose, onCreated }) {
                   </select>
                 </label>
 
-                <label className="mb-6 block">
+                <label className="mb-4 block">
                   <span className="mb-1 block text-sm font-medium text-gray-700">Vai trò</span>
                   <select
                     value={form.position}
@@ -172,6 +191,35 @@ export default function CreateEmployeeModal({ onClose, onCreated }) {
                       </option>
                     ))}
                   </select>
+                </label>
+
+                <label className="mb-4 block">
+                  <span className="mb-1 block text-sm font-medium text-gray-700">Cấp bậc</span>
+                  <select
+                    value={form.current_level_id}
+                    onChange={(e) => setForm({ ...form, current_level_id: e.target.value })}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Chưa xếp cấp bậc</option>
+                    {levels.map((level) => (
+                      <option key={level.id} value={level.id}>
+                        {level.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="mb-6 block">
+                  <span className="mb-1 block text-sm font-medium text-gray-700">
+                    Người quản lý trực tiếp
+                  </span>
+                  <EmployeeSearchSelect
+                    value={form.manager_employee_id}
+                    valueLabel={form.manager_name}
+                    onChange={(id, name) =>
+                      setForm({ ...form, manager_employee_id: id, manager_name: name })
+                    }
+                  />
                 </label>
               </>
             ) : (

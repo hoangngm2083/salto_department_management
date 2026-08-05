@@ -10,6 +10,7 @@ import DepartmentsListPage from './pages/DepartmentsListPage';
 import DepartmentDetailPage from './pages/DepartmentDetailPage';
 import EmployeesListPage from './pages/EmployeesListPage';
 import LeaveRequestsListPage from './pages/LeaveRequestsListPage';
+import LevelsListPage from './pages/LevelsListPage';
 import StatusPage from './pages/StatusPage';
 
 function HomeRedirect() {
@@ -57,6 +58,7 @@ export default function App() {
           <Route element={<ProtectedRoute roles={['admin', 'manager']} />}>
             <Route path="/departments/:slug" element={<DepartmentDetailPage />} />
             <Route path="/employees" element={<EmployeesListPage />} />
+            <Route path="/levels" element={<LevelsListPage />} />
           </Route>
 
           {/* Matches any unmatched URL under this pathless layout tree - ProtectedRoute

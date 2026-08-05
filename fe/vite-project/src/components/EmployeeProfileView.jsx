@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { listDepartments } from '../api/departments';
 import { updateEmployee } from '../api/employees';
+import { listLevels } from '../api/levels';
+import EmployeeSearchSelect from './EmployeeSearchSelect';
 import { useAuth } from '../context/useAuth';
+import { EMPLOYEE_STATUS_OPTIONS } from '../lib/employee-status';
 import { POSITION_OPTIONS, ROLE_LABELS } from '../lib/role-labels';
 
 export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
@@ -11,10 +14,15 @@ export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [departments, setDepartments] = useState([]);
+  const [levels, setLevels] = useState([]);
 
-  // Only admins may reassign department/position, per EmployeeService::ALLOWED_UPDATE_FIELDS_BY_ROLE -
-  // managers/employees editing these fields would be silently ignored by the backend.
+  // Only admins may reassign department/position/level/manager, per
+  // EmployeeService::ALLOWED_UPDATE_FIELDS_BY_ROLE - managers/employees editing
+  // these fields would be silently ignored by the backend.
   const canEditRestrictedFields = canEdit && actor.position === 'admin';
+  // status is the one field managers may also change (see plan mục 7.1) -
+  // employees editing their own profile still can't touch it.
+  const canEditStatus = canEdit && (actor.position === 'admin' || actor.position === 'manager');
 
   function startEditing() {
     setDraft({
@@ -24,12 +32,19 @@ export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
       password: '',
       department_id: employee.department_id ?? '',
       position: employee.position,
+      current_level_id: employee.current_level_id ?? '',
+      manager_employee_id: employee.manager_employee_id ?? null,
+      manager_name: employee.manager_name ?? null,
+      status: employee.status,
     });
     setEditing(true);
 
     if (canEditRestrictedFields) {
       listDepartments({ status: 'all', per_page: 100 })
         .then((res) => setDepartments(res.data))
+        .catch(() => {});
+      listLevels({ status: 'all', per_page: 100 })
+        .then((res) => setLevels(res.data))
         .catch(() => {});
     }
   }
@@ -58,6 +73,12 @@ export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
     if (canEditRestrictedFields) {
       payload.department_id = Number(draft.department_id);
       payload.position = draft.position;
+      payload.current_level_id = draft.current_level_id ? Number(draft.current_level_id) : null;
+      payload.manager_employee_id = draft.manager_employee_id;
+    }
+
+    if (canEditStatus) {
+      payload.status = draft.status;
     }
 
     try {
@@ -180,6 +201,61 @@ export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
             </select>
           ) : (
             <span>{employee.department_name ?? '—'}</span>
+          )}
+        </Field>
+
+        <Field label="Cấp bậc hiện tại">
+          {editing && canEditRestrictedFields ? (
+            <select
+              value={draft.current_level_id}
+              onChange={(e) => setDraft({ ...draft, current_level_id: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Chưa xếp cấp bậc</option>
+              {levels.map((level) => (
+                <option key={level.id} value={level.id}>
+                  {level.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span>{employee.current_level_name ?? '—'}</span>
+          )}
+        </Field>
+
+        <Field label="Người quản lý trực tiếp">
+          {editing && canEditRestrictedFields ? (
+            <EmployeeSearchSelect
+              value={draft.manager_employee_id}
+              valueLabel={draft.manager_name}
+              excludeId={employee.id}
+              onChange={(id, name) =>
+                setDraft({ ...draft, manager_employee_id: id, manager_name: name })
+              }
+            />
+          ) : (
+            <span>{employee.manager_name ?? '—'}</span>
+          )}
+        </Field>
+
+        <Field label="Trạng thái">
+          {editing && canEditStatus ? (
+            <select
+              value={draft.status}
+              onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            >
+              {EMPLOYEE_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+              {EMPLOYEE_STATUS_OPTIONS.find((opt) => opt.value === employee.status)?.label ??
+                employee.status}
+            </span>
           )}
         </Field>
       </dl>
