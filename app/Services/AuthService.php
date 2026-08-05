@@ -51,6 +51,8 @@ class AuthService
                 'leave-requests:read',
                 'leave-requests:create',
                 'leave-requests:update',
+                'notifications:read',
+                'notifications:update',
             ],
             default => [
                 'profile:read',
@@ -59,6 +61,8 @@ class AuthService
                 'leave-requests:read',
                 'leave-requests:create',
                 'leave-requests:update',
+                'notifications:read',
+                'notifications:update',
             ],
         };
     }

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\LeaveRequestStatus;
+use App\Events\LeaveRequestReviewed;
+use App\Events\LeaveRequestSubmitted;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use Illuminate\Pagination\CursorPaginator;
@@ -34,7 +36,11 @@ class LeaveRequestService
             'status' => LeaveRequestStatus::Pending,
         ]);
 
-        return $leaveRequest->load(['employee:id,name,department_id', 'employee.department:id,name']);
+        $leaveRequest->load(['employee:id,name,department_id', 'employee.department:id,name']);
+
+        LeaveRequestSubmitted::dispatch($leaveRequest);
+
+        return $leaveRequest;
     }
 
     /**
@@ -65,6 +71,12 @@ class LeaveRequestService
 
         $leaveRequest->update($attributes);
 
-        return $leaveRequest->fresh(['employee:id,name,department_id', 'employee.department:id,name', 'reviewer:id,name']);
+        $leaveRequest = $leaveRequest->fresh(['employee:id,name,department_id', 'employee.department:id,name', 'reviewer:id,name']);
+
+        if (in_array($data['status'], [LeaveRequestStatus::Approved->value, LeaveRequestStatus::Rejected->value], true)) {
+            LeaveRequestReviewed::dispatch($leaveRequest);
+        }
+
+        return $leaveRequest;
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\LeaveRequestController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
@@ -44,4 +45,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('imports/{import}', [ImportController::class, 'show'])->middleware('abilities:imports:read');
 
     Route::get('exports', [ExportController::class, 'download'])->middleware('abilities:exports:read');
+
+    Route::get('notifications', [NotificationController::class, 'index'])->middleware('abilities:notifications:read');
+    Route::patch('notifications', [NotificationController::class, 'updateMany'])->middleware('abilities:notifications:update');
+    Route::patch('notifications/{notification}', [NotificationController::class, 'update'])->middleware('abilities:notifications:update');
 });

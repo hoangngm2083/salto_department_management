@@ -3,6 +3,7 @@ import { useAuth } from '../context/useAuth';
 import { beginLogoutGuard } from '../lib/auth-storage';
 import { ROLE_LABELS } from '../lib/role-labels';
 import { headerNavItems } from '../lib/role-redirect';
+import NotificationBell from './NotificationBell';
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -40,6 +41,7 @@ export default function Header() {
 
       {user && (
         <div className="flex items-center gap-4">
+          <NotificationBell />
           <span className="text-sm text-gray-600">
             {user.name}{' '}
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
