@@ -36,6 +36,7 @@ class LeaveRequest extends Model
             'end_date' => 'date',
             'status' => LeaveRequestStatus::class,
             'reviewed_at' => 'datetime',
+            'reminder_sent_at' => 'datetime',
         ];
     }
 
