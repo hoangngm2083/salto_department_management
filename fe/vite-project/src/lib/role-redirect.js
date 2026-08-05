@@ -17,6 +17,8 @@ const NAV = {
   departments: { to: '/departments', label: 'Phòng ban' },
   employees: { to: '/employees', label: 'Người dùng' },
   levels: { to: '/levels', label: 'Cấp bậc' },
+  projects: { to: '/projects', label: 'Dự án' },
+  projectRoles: { to: '/project-roles', label: 'Vai trò dự án' },
   leaveRequests: { to: '/leave-requests', label: 'Đơn nghỉ phép' },
   profile: { to: '/me', label: 'Hồ sơ' },
 };
@@ -31,12 +33,21 @@ export function headerNavItems(employee) {
 
   switch (employee.position) {
     case 'admin':
-      return [NAV.departments, NAV.employees, NAV.levels, NAV.leaveRequests];
+      return [
+        NAV.departments,
+        NAV.employees,
+        NAV.levels,
+        NAV.projects,
+        NAV.projectRoles,
+        NAV.leaveRequests,
+      ];
     case 'manager':
       return [
         { to: roleHomePath(employee), label: 'Phòng ban của tôi' },
         NAV.employees,
         NAV.levels,
+        NAV.projects,
+        NAV.projectRoles,
         NAV.leaveRequests,
       ];
     default:
