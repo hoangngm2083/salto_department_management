@@ -9,6 +9,7 @@ Hệ thống quản lý phòng ban và nhân sự: RESTful API viết bằng Lar
 - [Phân quyền](#phân-quyền)
 - [Import CSV hàng loạt (chạy nền qua queue)](#import-csv-hàng-loạt-chạy-nền-qua-queue)
 - [Export CSV (streaming đồng bộ)](#export-csv-streaming-đồng-bộ)
+- [Thông báo đơn nghỉ phép (Events, Notifications, Scheduler)](#thông-báo-đơn-nghỉ-phép-events-notifications-scheduler)
 - [Điểm hay / đáng chú ý](#điểm-hay--đáng-chú-ý)
 - [Cấu trúc thư mục](#cấu-trúc-thư-mục)
 - [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
@@ -34,6 +35,8 @@ Hệ thống quản lý phòng ban và nhân sự: RESTful API viết bằng Lar
 - **Xác thực** (`/api/v1/auth`): đăng nhập, lấy thông tin bản thân (`me`), đăng xuất (thu hồi token hiện tại).
 - **Import hàng loạt bằng CSV** (`/api/v1/imports`): import phòng ban hoặc nhân viên từ file CSV, xử lý bất đồng bộ, theo dõi tiến độ và lỗi theo từng dòng qua endpoint `show`.
 - **Export ra CSV** (`/api/v1/exports`): xuất phòng ban hoặc nhân viên ra file CSV theo đúng bộ lọc đang áp dụng trên trang danh sách, tải về ngay trong 1 request (không cần polling).
+- **Đơn nghỉ phép** (`/api/v1/leave-requests`): nhân viên gửi đơn, manager duyệt/từ chối đơn trong phòng ban mình, admin toàn quyền mọi trạng thái/phòng ban.
+- **Thông báo** (`/api/v1/notifications`): mỗi lần gửi/duyệt đơn tự động tạo thông báo qua Events + Queued Listeners; nhắc nhở qua email mỗi ngày cho đơn còn tồn đọng (Scheduler); xem/đánh dấu đã đọc qua REST API riêng, hiển thị trên chuông thông báo ở FE.
 
 ## Phân quyền
 
@@ -45,11 +48,13 @@ Vai trò nhân viên (`position`): `admin`, `manager`, `employee`. Xem chi tiế
 | **Nhân viên** | Full CRUD, gán phòng ban, đổi vai trò | Xem/tạo/sửa nhân viên trong phòng ban của mình; không xoá, không đổi vai trò | Xem danh sách; chỉ xem/sửa hồ sơ của chính mình |
 | **Import** | Toàn quyền tạo & xem import | Không có quyền | Không có quyền |
 | **Export** | Toàn quyền xuất CSV | Không có quyền | Không có quyền |
+| **Đơn nghỉ phép** | Toàn quyền, mọi phòng ban, mọi trạng thái (kể cả revert về `pending`) | Xem đơn phòng ban mình; duyệt/từ chối đơn đang `pending` trong phòng ban mình | Tạo đơn cho mình; xem/huỷ đơn đang `pending` của chính mình |
+| **Thông báo** | Xem & đánh dấu đã đọc thông báo của mình | Xem & đánh dấu đã đọc thông báo của mình | Xem & đánh dấu đã đọc thông báo của mình |
 
 Việc phân quyền được thực hiện ở 2 lớp:
 
 1. **Token abilities** (Sanctum) — giới hạn ngay từ lúc cấp token, ví dụ `manager` không bao giờ có ability `employees:delete`. `admin` là vai trò duy nhất được cấp `['*']`, nên cũng là vai trò duy nhất có `imports:*`/`exports:read`.
-2. **Policy** (`DepartmentPolicy`, `EmployeePolicy`, `ImportPolicy`) — kiểm tra logic nghiệp vụ chi tiết hơn (VD: manager chỉ sửa được phòng ban của chính họ, employee chỉ xem/sửa hồ sơ của chính mình; riêng `ImportPolicy` chặn tuyệt đối mọi vai trò khác `admin` bất kể ability).
+2. **Policy** (`DepartmentPolicy`, `EmployeePolicy`, `ImportPolicy`, `LeaveRequestPolicy`) — kiểm tra logic nghiệp vụ chi tiết hơn (VD: manager chỉ sửa được phòng ban của chính họ, employee chỉ xem/sửa hồ sơ của chính mình; riêng `ImportPolicy` chặn tuyệt đối mọi vai trò khác `admin` bất kể ability). Riêng **Thông báo** không có Policy riêng — quyền sở hữu được ép ngay trong query (`$request->user()->notifications()`), nên một user không thể nào truy vấn ra thông báo của người khác để mà cần kiểm tra quyền thêm.
 
 ## Import CSV hàng loạt (chạy nền qua queue)
 
@@ -187,6 +192,98 @@ location = /api/v1/exports {
 }
 ```
 
+## Thông báo đơn nghỉ phép (Events, Notifications, Scheduler)
+
+Mọi nhân viên/manager/admin đều có thể xem và quản lý thông báo của chính mình — thực thi qua Sanctum ability `notifications:read`/`notifications:update` (xem [Phân quyền](#phân-quyền)). Kiến trúc cố tình tách phần **nghiệp vụ** (`LeaveRequestService` — tạo/duyệt đơn) khỏi phần **side effect** (ai được thông báo, thông báo bằng cách nào) bằng lớp Event + Listener ở giữa: Service chỉ dispatch 1 Event, không biết và không cần biết có Listener nào đang lắng nghe hay không.
+
+### Luồng xử lý
+
+1. **Gửi đơn** — `LeaveRequestService::create()` insert `leave_requests` rồi `LeaveRequestSubmitted::dispatch($leaveRequest)` **ngay trong request** (dispatch Event luôn đồng bộ ở Laravel). Vì `SendLeaveRequestSubmittedNotification` có `implements ShouldQueue`, Laravel tự động đẩy job xử lý Listener này lên queue thay vì chạy luôn — response `201` trả về ngay, không chờ.
+2. **Trên queue worker** (`php artisan queue:work`), Listener load `$leaveRequest->employee->department->managers` (quan hệ mới `Department::managers()`) rồi `Notification::send($managers, new LeaveRequestSubmitted($leaveRequest))` (channel `database`) — thông báo xuất hiện ngay trên chuông FE của manager. Nếu phòng ban không có manager, Listener chỉ `Log::warning()` rồi bỏ qua, không làm lỗi job.
+3. **Duyệt / từ chối** — `LeaveRequestService::updateStatus()` cập nhật `status`, rồi chỉ khi kết quả là `approved`/`rejected` (không phải `cancelled` hay revert `pending`) mới `LeaveRequestReviewed::dispatch($leaveRequest)`. Listener `SendLeaveRequestReviewedNotification` gửi `Notification::LeaveRequestReviewed` (channel `database`) thẳng tới nhân viên sở hữu đơn.
+4. **Nhắc nhở tự động mỗi ngày** — Scheduler (`routes/console.php`) chạy `leave-requests:send-reminders` theo lịch cấu hình trong `config('leave-requests.reminder_cron')`. Command **gom nhóm theo phòng ban** (`JOIN employees` + `GROUP BY department_id` + `COUNT`) để đếm số đơn `pending` sắp tới `start_date` (trong `config('leave-requests.reminder_days_before_start')` ngày tới) mà chưa từng được nhắc (`reminder_sent_at IS NULL`), rồi gửi **1 email tổng hợp/phòng ban** (`LeaveRequestReminder(int $total)`, channel `mail`, `ShouldQueue`) thay vì 1 email/đơn — tránh spam hộp thư khi 1 phòng ban tồn đọng nhiều đơn cùng lúc. Sau vòng lặp, `reminder_sent_at` được `UPDATE` hàng loạt cho **toàn bộ** tập đơn đã xét (kể cả phòng ban không có manager), để lần chạy sau không lặp lại vô hạn trên các đơn không có ai nhận thông báo.
+5. **Xem & quản lý thông báo** — FE (`NotificationBell.jsx`) poll `GET /api/v1/notifications` mỗi `VITE_NOTIFICATION_POLL_INTERVAL_MS` (mặc định 60s), lấy về danh sách phân trang (cursor) kèm `unread_count` **tính riêng ở server** (không suy ra từ trang hiện tại, vì trang có thể chỉ hiển thị 1 phần). Đánh dấu 1 thông báo đã đọc/chưa đọc qua `PATCH /api/v1/notifications/{id} { status: read|unread }`; đánh dấu nhiều thông báo cùng lúc (chỉ chiều đọc — bỏ đọc hàng loạt không có ý nghĩa nghiệp vụ nên không hỗ trợ) qua `PATCH /api/v1/notifications { status: read, ids: [...] }`. Cả 2 route đều không dùng động từ trong URI (đúng chuẩn REST) — hành động nằm trong body, không nằm trong path.
+
+### Sequence diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Người dùng (FE)
+    participant C as LeaveRequestController
+    participant Svc as LeaveRequestService
+    participant Ev as Event<br/>(LeaveRequestSubmitted / LeaveRequestReviewed)
+    participant Q as Queue (bảng jobs)
+    participant L as Listener<br/>(SendLeaveRequestSubmitted/ReviewedNotification)
+    participant N as Notification<br/>(LeaveRequestSubmitted / Reviewed / Reminder)
+    participant DB as Database
+    participant Sch as Scheduler (cron)
+    participant Cmd as SendLeaveRequestReminders
+    participant NC as NotificationController
+
+    Note over U,DB: === 1. Nhân viên gửi đơn nghỉ phép ===
+    U->>C: POST /api/v1/leave-requests (employee token)
+    C->>C: Gate::authorize('create', LeaveRequest::class)
+    C->>Svc: create(actor, data)
+    Svc->>DB: INSERT leave_requests (status=pending)
+    Svc->>Ev: LeaveRequestSubmitted::dispatch($leaveRequest)<br/>(đồng bộ, cùng request)
+    Ev->>Q: Listener implements ShouldQueue<br/>→ Laravel tự đẩy job lên queue
+    Svc-->>C: return $leaveRequest
+    C-->>U: 201 Created (không chờ Listener)
+
+    Note over Q,DB: chạy nền trên queue worker, không chặn response phía trên
+    Q->>L: handle(LeaveRequestSubmitted $event)
+    L->>DB: $event->leaveRequest->employee->department->managers
+    alt Phòng ban không có manager
+        L->>L: Log::warning(...) rồi return
+    else Có manager
+        L->>N: new LeaveRequestSubmitted($leaveRequest)
+        L->>DB: Notification::send($managers, $notification)<br/>→ INSERT notifications (channel: database)
+    end
+
+    Note over U,DB: === 2. Manager duyệt / từ chối ===
+    U->>C: PATCH /api/v1/leave-requests/{id} { status: approved|rejected }
+    C->>C: Gate::authorize('update', [$leaveRequest, $status])<br/>— LeaveRequestPolicy
+    C->>Svc: updateStatus(actor, $leaveRequest, data)
+    Svc->>DB: UPDATE leave_requests (status, reviewed_by, reviewed_at)
+    Svc->>Ev: LeaveRequestReviewed::dispatch($leaveRequest)<br/>chỉ khi approved/rejected
+    Svc-->>C: return $leaveRequest
+    C-->>U: 200 OK
+
+    Q->>L: handle(LeaveRequestReviewed $event)
+    L->>N: new LeaveRequestReviewed($leaveRequest)
+    L->>DB: $event->leaveRequest->employee->notify($notification)<br/>→ INSERT notifications (channel: database)
+
+    Note over Sch,DB: === 3. Nhắc nhở tự động (Scheduler chạy độc lập, không qua HTTP) ===
+    Sch->>Cmd: Schedule::command(...)->cron(config('leave-requests.reminder_cron'))<br/>->withoutOverlapping()
+    Cmd->>DB: JOIN leave_requests + employees, GROUP BY department_id<br/>đếm đơn pending sắp tới hạn, chưa nhắc
+    Cmd->>DB: SELECT managers theo các department_id ở trên
+    loop mỗi phòng ban có đơn cần nhắc
+        alt Không có manager
+            Cmd->>Cmd: Log::warning(...), bỏ qua phòng ban này
+        else Có manager
+            Cmd->>N: new LeaveRequestReminder($total)
+            Cmd->>DB: Notification::send($managers, $notification)<br/>→ gửi mail (channel: mail, ShouldQueue)
+        end
+    end
+    Cmd->>DB: UPDATE leave_requests SET reminder_sent_at=now()<br/>(toàn bộ tập đã xét, kể cả phòng ban không có manager)
+
+    Note over U,NC: === 4. Xem & đánh dấu thông báo (chuông FE) ===
+    loop mỗi 60s (VITE_NOTIFICATION_POLL_INTERVAL_MS)
+        U->>NC: GET /api/v1/notifications
+        NC->>DB: $user->notifications()->cursorPaginate()<br/>+ $user->unreadNotifications()->count()
+        NC-->>U: { data: [...], meta, unread_count }
+    end
+    U->>NC: PATCH /api/v1/notifications/{id} { status: read|unread }
+    NC->>DB: $notification->markAsRead() / markAsUnread()
+    NC-->>U: 200 OK
+    U->>NC: PATCH /api/v1/notifications { status: read, ids: [...] }
+    NC->>DB: notifications()->whereIn('id', ids)->get()->each->markAsRead()
+    NC-->>U: 200 OK
+```
+
+Cấu hình nhắc nhở nằm ở [config/leave-requests.php](config/leave-requests.php), điều khiển qua biến môi trường `LEAVE_REQUEST_REMINDER_DAYS` (số ngày trước `start_date` để bắt đầu nhắc, mặc định 2) và `LEAVE_REQUEST_REMINDER_CRON` (biểu thức cron cho lịch chạy, mặc định `0 8 * * *` — 8h sáng mỗi ngày).
+
 ## Điểm hay / đáng chú ý
 
 - **Không xử lý import trong request** — luôn queue, tránh timeout với file lớn (tối đa 100.000 dòng/file).
@@ -196,6 +293,9 @@ location = /api/v1/exports {
 - **Chống trùng key trong cùng 1 lần import** bằng bảng phụ `import_seen_keys` (unique constraint) thay vì lock ở tầng ứng dụng — rẻ và không tranh chấp với các import khác.
 - **Quyết định có cân nhắc kỹ giữa optimistic vs pessimistic locking** cho race condition giữa các import khác nhau chạm cùng business key — chọn giữ nguyên `upsert()` atomic + retry có backoff ở tầng Job thay vì `lockForUpdate()`, đánh đổi rủi ro lệch nhẹ số liệu `created`/`updated` (xác suất <1%) để tránh deadlock khi nhiều chunk 1000 dòng chạy song song. Xem phân tích đầy đủ ở [import_concurrency_strategy.md](import_concurrency_strategy.md).
 - **Test race condition thật trên MySQL**: ngoài test rollback bằng SQLite mặc định, có bộ test riêng (`tests/Feature/ImportMysqlConcurrencyTest.php`) tự dựng 2 connection MySQL thật, xen kẽ statement để tái hiện lock-wait/deadlock xác định (không phụ thuộc timing), tự `skip` nếu môi trường không có MySQL nên không phá CI mặc định.
+- **Service không biết gì về việc gửi thông báo**: `LeaveRequestService` chỉ dispatch Event (`LeaveRequestSubmitted`/`LeaveRequestReviewed`), toàn bộ logic "gửi cho ai, gửi bằng cách nào" nằm ở Listener — thêm kênh thông báo mới (VD: Slack, SMS) chỉ cần sửa Notification class hoặc thêm Listener, không đụng vào Service.
+- **Nhắc nhở gom theo phòng ban thay vì theo từng đơn**: `SendLeaveRequestReminders` dùng 1 câu `JOIN` + `GROUP BY department_id` để đếm, thay vì lặp qua từng `LeaveRequest` rồi gửi riêng — manager có 5 đơn tồn đọng chỉ nhận 1 email tổng hợp, không bị spam 5 email.
+- **API thông báo tuân REST nghiêm túc**: không có động từ nào trong URI (không có `/notifications/{id}/read`) — hành động luôn nằm trong body của `PATCH`, đánh dấu 1 hay nhiều thông báo cùng lúc chỉ khác nhau ở việc có `{id}` trong path hay không.
 - **Phân quyền 2 lớp** (Sanctum token abilities + Policy) giúp giới hạn quyền ngay từ tầng xác thực, giảm bề mặt tấn công so với chỉ kiểm tra ở tầng Controller.
 - **API tự sinh tài liệu** qua Scramble — không cần viết OpenAPI spec tay.
 
@@ -203,23 +303,30 @@ location = /api/v1/exports {
 
 ```
 app/
-├── Enums/                  # ImportStatus, ImportType, ExportType
+├── Console/Commands/       # SendLeaveRequestReminders (Scheduler)
+├── Enums/                  # ImportStatus, ImportType, ExportType, LeaveRequestStatus, NotificationReadStatus
+├── Events/                 # LeaveRequestSubmitted, LeaveRequestReviewed
+├── Listeners/              # SendLeaveRequestSubmittedNotification, SendLeaveRequestReviewedNotification
+├── Notifications/          # LeaveRequestSubmitted, LeaveRequestReviewed, LeaveRequestReminder
 ├── Http/
-│   ├── Controllers/Api/V1/ # AuthController, DepartmentController, EmployeeController, ImportController, ExportController
-│   ├── Requests/           # Form Request validation theo từng nghiệp vụ (Import/, Export/, ...)
+│   ├── Controllers/Api/V1/ # AuthController, DepartmentController, EmployeeController, LeaveRequestController, NotificationController, ImportController, ExportController
+│   ├── Requests/           # Form Request validation theo từng nghiệp vụ (Import/, Export/, Notification/, ...)
 │   └── Resources/          # API Resource transformer
 ├── Jobs/Import/            # ProcessImportJob, ImportChunkJob
-├── Models/                 # Department, Employee, Import, ImportError
-├── Policies/               # DepartmentPolicy, EmployeePolicy, ImportPolicy
+├── Models/                 # Department, Employee, LeaveRequest, Import, ImportError
+├── Policies/               # DepartmentPolicy, EmployeePolicy, ImportPolicy, LeaveRequestPolicy
 └── Services/
     ├── AuthService.php
     ├── DepartmentService.php
     ├── EmployeeService.php
+    ├── LeaveRequestService.php
     ├── ImportService.php
     ├── ExportService.php
     ├── Import/              # CsvReader, ImportStrategyResolver, AbstractImportHandler, Handlers/
     └── Export/              # ExportStrategyResolver, AbstractExportHandler, Handlers/
 fe/vite-project/            # SPA React + Vite (giao diện người dùng)
+├── src/api/notifications.js
+└── src/components/NotificationBell.jsx
 tests/
 ├── Feature/                 # Test luồng API end-to-end
 └── Unit/                    # Test đơn vị cho Service/Job/Handler
@@ -248,15 +355,17 @@ Cấu hình kết nối database trong `.env` (mặc định MySQL, database `de
 php artisan migrate
 ```
 
-Chạy server và queue worker (import chạy nền, bắt buộc phải chạy worker để import được xử lý):
+Chạy server và queue worker (import và các Listener thông báo (`LeaveRequestSubmitted`/`LeaveRequestReviewed`) đều chạy nền qua queue, bắt buộc phải chạy worker mới xử lý được):
 
 ```bash
 php artisan serve
 ```
 
 ```bash
-php artisan queue:work --queue=imports
+php artisan queue:work --queue=imports,default
 ```
+
+Muốn nhắc nhở tự động (`leave-requests:send-reminders`) chạy đúng lịch, cần có scheduler chạy — production dùng cron gọi `php artisan schedule:run` mỗi phút; local có thể chạy tay `php artisan schedule:work`.
 
 Hoặc dùng script tổng hợp có sẵn (chạy song song server + queue + log + vite) nếu đã cài `concurrently`:
 
