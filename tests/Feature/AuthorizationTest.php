@@ -4,6 +4,7 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Level;
 use App\Models\Project;
+use App\Models\ProjectManager;
 use App\Models\ProjectRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -421,6 +422,24 @@ test('updateProject_managerToken_forbidden', function () {
     // Act
     $response = $this->putJson("/api/projects/{$project->slug}", [
         'name' => 'Renamed',
+    ]);
+
+    // Assert
+    $response->assertForbidden()
+        ->assertJsonPath('message', 'Forbidden.');
+});
+
+test('addProjectManager_managerToken_forbidden', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id]);
+    $candidate = Employee::factory()->create(['status' => 'active']);
+    Sanctum::actingAs($manager, ['projects:read', 'projects:manage-managers']);
+
+    // Act
+    $response = $this->postJson("/api/projects/{$project->slug}/managers", [
+        'employee_id' => $candidate->id,
     ]);
 
     // Assert

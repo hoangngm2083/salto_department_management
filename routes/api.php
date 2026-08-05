@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\LeaveRequestController;
 use App\Http\Controllers\Api\V1\LevelController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\ProjectManagerController;
 use App\Http\Controllers\Api\V1\ProjectRoleController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,6 +53,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('store', 'abilities:projects:create')
         ->middlewareFor('update', 'abilities:projects:update')
         ->middlewareFor('destroy', 'abilities:projects:delete');
+
+    Route::post('projects/{project:slug}/managers', [ProjectManagerController::class, 'store'])
+        ->middleware('abilities:projects:manage-managers');
+    Route::delete('projects/{project:slug}/managers/{projectManager}', [ProjectManagerController::class, 'destroy'])
+        ->middleware('abilities:projects:manage-managers');
 
     Route::apiResource('project-roles', ProjectRoleController::class)
         ->scoped(['project_role' => 'slug'])

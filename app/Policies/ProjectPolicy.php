@@ -46,4 +46,14 @@ class ProjectPolicy
     {
         return false;
     }
+
+    /**
+     * Add or remove a project manager. Assigning organizational authority is
+     * an admin action (new_business.md 5.2: "gán manager cho project"), not
+     * something a project's own manager can do for themselves or others.
+     */
+    public function manageManagers(Employee $employee, Project $project): bool
+    {
+        return false;
+    }
 }
