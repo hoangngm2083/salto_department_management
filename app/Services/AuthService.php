@@ -48,6 +48,7 @@ class AuthService
                 'employees:update',
                 'departments:read',
                 'departments:update',
+                'levels:read',
                 'leave-requests:read',
                 'leave-requests:create',
                 'leave-requests:update',

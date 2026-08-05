@@ -2,6 +2,7 @@
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\Level;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -208,6 +209,49 @@ test('createDepartment_managerToken_forbidden', function () {
     // Act
     $response = $this->postJson('/api/departments', [
         'name' => 'New Department',
+    ]);
+
+    // Assert
+    $response->assertForbidden()
+        ->assertJsonPath('message', 'Forbidden.');
+});
+
+test('getLevels_managerToken_successful', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    Level::factory()->create(['status' => 'active']);
+    Sanctum::actingAs($manager, ['levels:read']);
+
+    // Act
+    $response = $this->getJson('/api/levels');
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('success', true);
+});
+
+test('getLevels_employeeReadToken_forbidden', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['position' => 'employee']);
+    Sanctum::actingAs($employee, ['levels:read']);
+
+    // Act
+    $response = $this->getJson('/api/levels');
+
+    // Assert
+    $response->assertForbidden()
+        ->assertJsonPath('message', 'Forbidden.');
+});
+
+test('createLevel_managerToken_forbidden', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    Sanctum::actingAs($manager, ['levels:read']);
+
+    // Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'New Level',
+        'rank' => 90,
     ]);
 
     // Assert

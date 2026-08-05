@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\LeaveRequestController;
+use App\Http\Controllers\Api\V1\LevelController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,6 +27,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('store', 'abilities:departments:create')
         ->middlewareFor('update', 'abilities:departments:update')
         ->middlewareFor('destroy', 'abilities:departments:delete');
+
+    Route::apiResource('levels', LevelController::class)
+        ->scoped(['level' => 'slug'])
+        ->middlewareFor('index', 'abilities:levels:read')
+        ->middlewareFor('show', 'abilities:levels:read')
+        ->middlewareFor('store', 'abilities:levels:create')
+        ->middlewareFor('update', 'abilities:levels:update')
+        ->middlewareFor('destroy', 'abilities:levels:delete');
 
     Route::apiResource('employees', EmployeeController::class)
         ->middlewareFor('index', 'abilities:employees:read')
