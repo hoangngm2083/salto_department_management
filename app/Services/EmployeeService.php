@@ -2,11 +2,18 @@
 
 namespace App\Services;
 
+use App\Enums\EmployeeStatus;
 use App\Models\Employee;
 use Illuminate\Pagination\CursorPaginator;
+use Illuminate\Validation\ValidationException;
 
 class EmployeeService
 {
+    public function __construct(private readonly ProjectManagerGuard $projectManagerGuard)
+    {
+        //
+    }
+
     /**
      * @var array<string, list<string>>
      */
@@ -65,6 +72,10 @@ class EmployeeService
         }
 
         if ($employee !== null) {
+            if (($data['status'] ?? null) === EmployeeStatus::Resigned->value && $employee->status !== EmployeeStatus::Resigned) {
+                $this->guardLastProjectManager($employee, 'resign this employee');
+            }
+
             $employee->update($data);
 
             return $employee->fresh(['department:id,name,slug', 'currentLevel:id,name,slug', 'manager:id,name']);
@@ -89,6 +100,28 @@ class EmployeeService
      */
     public function delete(Employee $employee): bool
     {
+        $this->guardLastProjectManager($employee, 'delete this employee');
+
         return (bool) $employee->delete();
+    }
+
+    /**
+     * Block an action that would leave a project without an active manager.
+     */
+    private function guardLastProjectManager(Employee $employee, string $action): void
+    {
+        $projects = $this->projectManagerGuard->projectsLeftWithoutManagerIfRemoved($employee);
+
+        if ($projects === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'employee' => sprintf(
+                'Cannot %s: still the only active manager of: %s.',
+                $action,
+                implode(', ', $projects)
+            ),
+        ]);
     }
 }

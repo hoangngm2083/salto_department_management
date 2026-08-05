@@ -3,6 +3,8 @@
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Level;
+use App\Models\Project;
+use App\Models\ProjectManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -474,6 +476,74 @@ test('updateEmployee_unknownCurrentLevelId_validationError', function () {
     // Assert
     $response->assertUnprocessable()
         ->assertJsonValidationErrors(['current_level_id'], 'errors');
+});
+
+test('deleteEmployee_soleActiveProjectManager_validationError', function () {
+    // Arrange
+    $employee = Employee::factory()->create();
+    $project = Project::factory()->create(['name' => 'Guarded Project']);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'end_date' => null]);
+
+    // Act
+    $response = $this->deleteJson("/api/employees/{$employee->id}");
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['employee'], 'errors');
+
+    expect($employee->fresh()->trashed())->toBeFalse();
+});
+
+test('deleteEmployee_coManagedProject_softDeleted', function () {
+    // Arrange
+    $employee = Employee::factory()->create();
+    $otherManager = Employee::factory()->create();
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'end_date' => null]);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $otherManager->id, 'end_date' => null]);
+
+    // Act
+    $response = $this->deleteJson("/api/employees/{$employee->id}");
+
+    // Assert
+    $response->assertSuccessful();
+    $this->assertSoftDeleted($employee);
+});
+
+test('updateEmployee_resignSoleActiveProjectManager_validationError', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['status' => 'active']);
+    $project = Project::factory()->create(['name' => 'Guarded Project']);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'end_date' => null]);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'status' => 'resigned',
+    ]);
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['employee'], 'errors');
+
+    expect($employee->fresh()->status->value)->toBe('active');
+});
+
+test('updateEmployee_resignCoManagedProject_statusChanged', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['status' => 'active']);
+    $otherManager = Employee::factory()->create();
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'end_date' => null]);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $otherManager->id, 'end_date' => null]);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'status' => 'resigned',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.status', 'resigned');
 });
 
 test('updateEmployee_adminSetsStatus_statusChanged', function () {
