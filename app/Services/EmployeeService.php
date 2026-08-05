@@ -35,7 +35,7 @@ class EmployeeService
                 fn ($query) => $query->where('position', '!=', 'admin')
             )
             ->orderBy('id', 'desc')
-            ->cursorPaginate($data['per_page'] ?? 15);
+            ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
     }
 
     /**

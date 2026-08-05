@@ -20,7 +20,7 @@ class LeaveRequestService
             ->when($data['department_id'] ?? null, fn ($query, $departmentId) => $query->whereRelation('employee', 'department_id', $departmentId))
             ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->orderBy('id', 'desc')
-            ->cursorPaginate($data['per_page'] ?? 15);
+            ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
     }
 
     /**

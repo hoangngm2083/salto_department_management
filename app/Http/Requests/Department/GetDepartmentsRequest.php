@@ -39,10 +39,10 @@ class GetDepartmentsRequest extends FormRequest
     }
 
     /**
-     * Get per_page value with default 15.
+     * Get per_page value with the configured default.
      */
     public function getPerPage(): int
     {
-        return (int) $this->validated('per_page', 15);
+        return (int) $this->validated('per_page', config('pagination.default_per_page'));
     }
 }
