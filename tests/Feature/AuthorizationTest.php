@@ -3,6 +3,7 @@
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Level;
+use App\Models\Project;
 use App\Models\ProjectRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -360,6 +361,66 @@ test('createProjectRole_managerToken_forbidden', function () {
     // Act
     $response = $this->postJson('/api/project-roles', [
         'name' => 'New Role',
+    ]);
+
+    // Assert
+    $response->assertForbidden()
+        ->assertJsonPath('message', 'Forbidden.');
+});
+
+test('getProjects_managerToken_successful', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    Project::factory()->create();
+    Sanctum::actingAs($manager, ['projects:read']);
+
+    // Act
+    $response = $this->getJson('/api/projects');
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('success', true);
+});
+
+test('getProjects_employeeReadToken_forbidden', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['position' => 'employee']);
+    Sanctum::actingAs($employee, ['projects:read']);
+
+    // Act
+    $response = $this->getJson('/api/projects');
+
+    // Assert
+    $response->assertForbidden()
+        ->assertJsonPath('message', 'Forbidden.');
+});
+
+test('createProject_managerToken_forbidden', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $anotherManager = Employee::factory()->create(['status' => 'active']);
+    Sanctum::actingAs($manager, ['projects:read']);
+
+    // Act
+    $response = $this->postJson('/api/projects', [
+        'name' => 'New Project',
+        'manager_employee_ids' => [$anotherManager->id],
+    ]);
+
+    // Assert
+    $response->assertForbidden()
+        ->assertJsonPath('message', 'Forbidden.');
+});
+
+test('updateProject_managerToken_forbidden', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager']);
+    $project = Project::factory()->create();
+    Sanctum::actingAs($manager, ['projects:read']);
+
+    // Act
+    $response = $this->putJson("/api/projects/{$project->slug}", [
+        'name' => 'Renamed',
     ]);
 
     // Assert
