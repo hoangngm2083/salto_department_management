@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\EmployeeStatus;
+use App\Enums\ProjectAssignmentStatus;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -80,6 +81,22 @@ class Employee extends Authenticatable
     public function directReports(): HasMany
     {
         return $this->hasMany(Employee::class, 'manager_employee_id');
+    }
+
+    /**
+     * @return HasMany<ProjectAssignment, $this>
+     */
+    public function projectAssignments(): HasMany
+    {
+        return $this->hasMany(ProjectAssignment::class);
+    }
+
+    /**
+     * @return HasMany<ProjectAssignment, $this>
+     */
+    public function activeProjectAssignments(): HasMany
+    {
+        return $this->projectAssignments()->where('status', ProjectAssignmentStatus::Active);
     }
 
     /**

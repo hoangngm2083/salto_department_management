@@ -9,8 +9,10 @@ use Illuminate\Validation\ValidationException;
 
 class EmployeeService
 {
-    public function __construct(private readonly ProjectManagerGuard $projectManagerGuard)
-    {
+    public function __construct(
+        private readonly ProjectManagerGuard $projectManagerGuard,
+        private readonly ProjectAssignmentCloser $projectAssignmentCloser,
+    ) {
         //
     }
 
@@ -72,11 +74,17 @@ class EmployeeService
         }
 
         if ($employee !== null) {
-            if (($data['status'] ?? null) === EmployeeStatus::Resigned->value && $employee->status !== EmployeeStatus::Resigned) {
+            $isResigning = ($data['status'] ?? null) === EmployeeStatus::Resigned->value && $employee->status !== EmployeeStatus::Resigned;
+
+            if ($isResigning) {
                 $this->guardLastProjectManager($employee, 'resign this employee');
             }
 
             $employee->update($data);
+
+            if ($isResigning) {
+                $this->projectAssignmentCloser->closeActiveAssignmentsForEmployee($employee);
+            }
 
             return $employee->fresh(['department:id,name,slug', 'currentLevel:id,name,slug', 'manager:id,name']);
         }

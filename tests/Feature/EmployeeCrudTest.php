@@ -1,10 +1,13 @@
 <?php
 
+use App\Models\AssignmentRolePeriod;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Level;
 use App\Models\Project;
+use App\Models\ProjectAssignment;
 use App\Models\ProjectManager;
+use App\Models\ProjectRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -544,6 +547,37 @@ test('updateEmployee_resignCoManagedProject_statusChanged', function () {
     // Assert
     $response->assertSuccessful()
         ->assertJsonPath('data.status', 'resigned');
+});
+
+test('updateEmployee_resignClosesActiveAssignments_assignmentsAndRolePeriodsEnded', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['status' => 'active']);
+    $project = Project::factory()->create();
+    $assignment = ProjectAssignment::factory()->create([
+        'project_id' => $project->id,
+        'employee_id' => $employee->id,
+        'status' => 'active',
+        'end_date' => null,
+    ]);
+    $role = ProjectRole::factory()->create();
+    $rolePeriod = AssignmentRolePeriod::factory()->create([
+        'project_assignment_id' => $assignment->id,
+        'project_role_id' => $role->id,
+        'end_date' => null,
+    ]);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'status' => 'resigned',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.status', 'resigned');
+
+    expect($assignment->fresh()->status->value)->toBe('ended');
+    expect($assignment->fresh()->end_date->toDateString())->toBe(today()->toDateString());
+    expect($rolePeriod->fresh()->end_date->toDateString())->toBe(today()->toDateString());
 });
 
 test('updateEmployee_adminSetsStatus_statusChanged', function () {

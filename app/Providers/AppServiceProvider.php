@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\ProjectAssignmentCloser;
+use App\Services\ProjectAssignmentCloserService;
 use App\Services\ProjectManagerGuard;
 use App\Services\ProjectManagerGuardService;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -17,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(ProjectManagerGuard::class, ProjectManagerGuardService::class);
+        $this->app->bind(ProjectAssignmentCloser::class, ProjectAssignmentCloserService::class);
     }
 
     /**

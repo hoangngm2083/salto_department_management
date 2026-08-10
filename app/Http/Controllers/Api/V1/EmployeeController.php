@@ -7,15 +7,19 @@ use App\Http\Requests\Employee\GetEmployeesRequest;
 use App\Http\Requests\Employee\UpsertEmployeeRequest;
 use App\Http\Resources\Employee\EmployeeCollection;
 use App\Http\Resources\Employee\EmployeeResource;
+use App\Http\Resources\Employee\EmployeeWorkHistoryResource;
 use App\Models\Employee;
 use App\Services\EmployeeService;
+use App\Services\ProjectAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 
 class EmployeeController extends Controller
 {
-    public function __construct(private readonly EmployeeService $employeeService)
-    {
+    public function __construct(
+        private readonly EmployeeService $employeeService,
+        private readonly ProjectAssignmentService $projectAssignmentService,
+    ) {
         //
     }
 
@@ -93,6 +97,20 @@ class EmployeeController extends Controller
         return $this->successResponse(
             null,
             'Employee deleted successfully.'
+        );
+    }
+
+    /**
+     * Display the employee's project/role work history.
+     */
+    public function workHistory(Employee $employee): JsonResponse
+    {
+        Gate::authorize('view', $employee);
+        $employee = $this->projectAssignmentService->workHistory($employee);
+
+        return $this->successResponse(
+            new EmployeeWorkHistoryResource($employee),
+            'Employee work history retrieved successfully.'
         );
     }
 }
