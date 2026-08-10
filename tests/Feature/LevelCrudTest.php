@@ -112,18 +112,18 @@ test('getLevels_invalidStatus_validationError', function () {
         ->assertJsonValidationErrors(['status'], 'errors');
 });
 
-test('createLevel_validPayload_created', function () {
+test('createLevel_insertAtEnd_rankedAfterHighestExisting', function () {
     // Arrange
-    $payload = [
-        'name' => 'Staff Engineer',
-        'slug' => 'staff-engineer',
-        'rank' => 65,
-        'probation_salary_percentage' => 85,
-        'status' => 'active',
-    ];
+    Level::factory()->create(['name' => 'Junior', 'slug' => 'junior-a', 'rank' => 40]);
 
     // Act
-    $response = $this->postJson('/api/levels', $payload);
+    $response = $this->postJson('/api/levels', [
+        'name' => 'Staff Engineer',
+        'slug' => 'staff-engineer',
+        'insert_position' => 'end',
+        'probation_salary_percentage' => 85,
+        'status' => 'active',
+    ]);
 
     // Assert
     $response->assertCreated()
@@ -131,22 +131,104 @@ test('createLevel_validPayload_created', function () {
         ->assertJsonPath('message', 'Level created successfully.')
         ->assertJsonPath('data.name', 'Staff Engineer')
         ->assertJsonPath('data.slug', 'staff-engineer')
-        ->assertJsonPath('data.rank', 65)
+        ->assertJsonPath('data.rank', 50)
         ->assertJsonPath('data.probation_salary_percentage', 85)
         ->assertJsonPath('data.status', 'active');
+});
 
-    $this->assertDatabaseHas('levels', [
-        'name' => 'Staff Engineer',
-        'slug' => 'staff-engineer',
-        'rank' => 65,
+test('createLevel_insertAtStart_rankedBeforeLowestExisting', function () {
+    // Arrange
+    Level::factory()->create(['name' => 'Junior', 'slug' => 'junior-b', 'rank' => 40]);
+
+    // Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'Newbie',
+        'insert_position' => 'start',
     ]);
+
+    // Assert
+    $response->assertCreated()->assertJsonPath('data.rank', 20);
+});
+
+test('createLevel_insertAtEnd_noExistingLevels_startsAtGap', function () {
+    // Arrange: RefreshDatabase gives an empty `levels` table per test - no
+    // seeder populates it, so this genuinely is "the very first level".
+
+    // Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'First Ever',
+        'insert_position' => 'end',
+    ]);
+
+    // Assert
+    $response->assertCreated()->assertJsonPath('data.rank', 10);
+});
+
+test('createLevel_insertBeforeReference_rankedBetweenNeighbours', function () {
+    // Arrange
+    $lower = Level::factory()->create(['name' => 'Junior', 'slug' => 'junior-c', 'rank' => 40]);
+    $reference = Level::factory()->create(['name' => 'Middle', 'slug' => 'middle-c', 'rank' => 50]);
+
+    // Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'Junior II',
+        'insert_position' => 'before',
+        'reference_level_id' => $reference->id,
+    ]);
+
+    // Assert
+    $response->assertCreated();
+    $rank = $response->json('data.rank');
+    expect($rank)->toBeGreaterThan($lower->rank)->toBeLessThan($reference->rank);
+});
+
+test('createLevel_insertAfterReference_rankedBetweenNeighbours', function () {
+    // Arrange
+    $reference = Level::factory()->create(['name' => 'Middle', 'slug' => 'middle-d', 'rank' => 50]);
+    $higher = Level::factory()->create(['name' => 'Senior', 'slug' => 'senior-d', 'rank' => 60]);
+
+    // Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'Middle II',
+        'insert_position' => 'after',
+        'reference_level_id' => $reference->id,
+    ]);
+
+    // Assert
+    $response->assertCreated();
+    $rank = $response->json('data.rank');
+    expect($rank)->toBeGreaterThan($reference->rank)->toBeLessThan($higher->rank);
+});
+
+test('createLevel_noRoomBetweenAdjacentRanks_rebalancesThenInserts', function () {
+    // Arrange: two levels with no integer gap between their ranks.
+    $reference = Level::factory()->create(['name' => 'Junior', 'slug' => 'junior-e', 'rank' => 10]);
+    $tight = Level::factory()->create(['name' => 'Middle', 'slug' => 'middle-e', 'rank' => 11]);
+
+    // Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'Junior II',
+        'insert_position' => 'after',
+        'reference_level_id' => $reference->id,
+    ]);
+
+    // Assert: rebalance keeps relative order (reference still ranked below
+    // the level that used to be its tight neighbour) and leaves the new
+    // level correctly slotted between them.
+    $response->assertCreated();
+    $newRank = $response->json('data.rank');
+    $referenceRank = $reference->fresh()->rank;
+    $tightRank = $tight->fresh()->rank;
+
+    expect($referenceRank)->toBeLessThan($newRank)
+        ->and($newRank)->toBeLessThan($tightRank);
 });
 
 test('createLevel_missingSlug_slugGenerated', function () {
     // Arrange
     $payload = [
         'name' => 'Tech Lead',
-        'rank' => 66,
+        'insert_position' => 'end',
         'status' => 'active',
     ];
 
@@ -164,7 +246,7 @@ test('createLevel_customSlugProvided_slugGeneratedFromName', function () {
     $payload = [
         'name' => 'Tech Lead',
         'slug' => 'totally-different-slug',
-        'rank' => 67,
+        'insert_position' => 'end',
         'status' => 'active',
     ];
 
@@ -180,7 +262,7 @@ test('createLevel_customSlugProvided_slugGeneratedFromName', function () {
 test('createLevel_missingName_validationError', function () {
     // Arrange / Act
     $response = $this->postJson('/api/levels', [
-        'rank' => 68,
+        'insert_position' => 'end',
     ]);
 
     // Assert
@@ -197,7 +279,7 @@ test('createLevel_duplicateSlug_validationError', function () {
     $response = $this->postJson('/api/levels', [
         'name' => 'Existing',
         'slug' => 'existing',
-        'rank' => 70,
+        'insert_position' => 'end',
     ]);
 
     // Assert
@@ -205,26 +287,34 @@ test('createLevel_duplicateSlug_validationError', function () {
         ->assertJsonValidationErrors(['slug'], 'errors');
 });
 
-test('createLevel_duplicateRank_validationError', function () {
-    // Arrange
-    Level::factory()->create(['name' => 'Rank Holder', 'slug' => 'rank-holder', 'rank' => 71]);
-
-    // Act
+test('createLevel_missingInsertPosition_validationError', function () {
+    // Arrange / Act
     $response = $this->postJson('/api/levels', [
-        'name' => 'Rank Challenger',
-        'rank' => 71,
+        'name' => 'No Position',
     ]);
 
     // Assert
     $response->assertUnprocessable()
-        ->assertJsonValidationErrors(['rank'], 'errors');
+        ->assertJsonValidationErrors(['insert_position'], 'errors');
+});
+
+test('createLevel_beforePositionMissingReference_validationError', function () {
+    // Arrange / Act
+    $response = $this->postJson('/api/levels', [
+        'name' => 'Dangling',
+        'insert_position' => 'before',
+    ]);
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['reference_level_id'], 'errors');
 });
 
 test('createLevel_probationPercentageOutOfRange_validationError', function () {
     // Arrange / Act
     $response = $this->postJson('/api/levels', [
         'name' => 'Overflowing',
-        'rank' => 72,
+        'insert_position' => 'end',
         'probation_salary_percentage' => 150,
     ]);
 

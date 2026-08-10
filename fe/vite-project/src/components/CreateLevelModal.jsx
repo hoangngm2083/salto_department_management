@@ -1,12 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { createLevel } from '../api/levels';
+import { createLevel, listLevels } from '../api/levels';
 
+const NO_REFERENCE_POSITIONS = new Set(['start', 'end']);
+
+/**
+ * Rank is never typed in directly - the admin picks where the new level
+ * slots into the existing order (start/end of the ladder, or right before/
+ * after another level) and the backend derives a gap-based rank from that
+ * (`LevelService::resolveRankForInsert`).
+ */
 export default function CreateLevelModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
-  const [rank, setRank] = useState('');
   const [probationSalaryPercentage, setProbationSalaryPercentage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const [existingLevels, setExistingLevels] = useState([]);
+  const [loadingLevels, setLoadingLevels] = useState(true);
+  const [insertPosition, setInsertPosition] = useState('end');
+  const [referenceLevelId, setReferenceLevelId] = useState('');
+
+  useEffect(() => {
+    listLevels({ status: 'all', per_page: 100 })
+      .then((res) => setExistingLevels([...res.data].sort((a, b) => a.rank - b.rank)))
+      .catch(() => {})
+      .finally(() => setLoadingLevels(false));
+  }, []);
+
+  const needsReference = !NO_REFERENCE_POSITIONS.has(insertPosition);
+  const canSubmit = name.trim() !== '' && (!needsReference || referenceLevelId !== '');
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -15,7 +37,8 @@ export default function CreateLevelModal({ onClose, onCreated }) {
     try {
       const created = await createLevel({
         name,
-        rank: Number(rank),
+        insert_position: insertPosition,
+        reference_level_id: needsReference ? Number(referenceLevelId) : undefined,
         probation_salary_percentage: probationSalaryPercentage
           ? Number(probationSalaryPercentage)
           : undefined,
@@ -64,20 +87,56 @@ export default function CreateLevelModal({ onClose, onCreated }) {
             />
           </label>
 
+          {!loadingLevels && existingLevels.length > 0 && (
+            <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              <span className="mb-1 block text-xs font-medium text-gray-500">
+                Thứ tự cấp bậc hiện có (thấp &rarr; cao)
+              </span>
+              <ol className="list-inside list-decimal text-sm text-gray-700">
+                {existingLevels.map((level) => (
+                  <li key={level.id}>{level.name}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           <label className="mb-4 block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">
-              Rank (thứ tự cấp bậc, số nhỏ hơn xếp trước)
-            </span>
-            <input
-              type="number"
-              required
-              min={0}
-              max={65535}
-              value={rank}
-              onChange={(e) => setRank(e.target.value)}
+            <span className="mb-1 block text-sm font-medium text-gray-700">Vị trí trong danh sách</span>
+            <select
+              value={insertPosition}
+              onChange={(e) => {
+                setInsertPosition(e.target.value);
+                setReferenceLevelId('');
+              }}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
+            >
+              <option value="start">Đầu danh sách (thấp nhất)</option>
+              <option value="end">Cuối danh sách (cao nhất)</option>
+              <option value="before">Trước một cấp bậc...</option>
+              <option value="after">Sau một cấp bậc...</option>
+            </select>
           </label>
+
+          {needsReference && (
+            <label className="mb-4 block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">
+                {insertPosition === 'before' ? 'Trước cấp bậc' : 'Sau cấp bậc'}
+              </span>
+              <select
+                required
+                value={referenceLevelId}
+                onChange={(e) => setReferenceLevelId(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">-- Chọn cấp bậc --</option>
+                {existingLevels.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className="mb-6 block">
             <span className="mb-1 block text-sm font-medium text-gray-700">
@@ -105,7 +164,7 @@ export default function CreateLevelModal({ onClose, onCreated }) {
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !canSubmit}
               className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
             >
               {submitting ? 'Đang tạo...' : 'Tạo cấp bậc'}
