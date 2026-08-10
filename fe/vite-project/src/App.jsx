@@ -15,6 +15,7 @@ import ProjectsListPage from './pages/ProjectsListPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectRolesListPage from './pages/ProjectRolesListPage';
 import StatusPage from './pages/StatusPage';
+import TaskDelayRequestsListPage from './pages/TaskDelayRequestsListPage';
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/me" element={<MePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
           <Route path="/leave-requests" element={<LeaveRequestsListPage />} />
+          <Route path="/task-delay-requests" element={<TaskDelayRequestsListPage />} />
           {/* Open to every authenticated role - ProjectPolicy::view allows a plain
               employee onto a project they have (or had) an assignment on, read-only.
               The list at /projects stays admin/manager-only below. */}

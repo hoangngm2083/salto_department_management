@@ -33,3 +33,9 @@ export async function getEmployeeWorkHistory(id) {
 
   return data.data;
 }
+
+export async function getEmployeeTasks(id, params) {
+  const { data } = await http.get(`/employees/${id}/tasks`, { params });
+
+  return data.data;
+}

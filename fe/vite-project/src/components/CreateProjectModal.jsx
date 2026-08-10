@@ -1,15 +1,26 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { createProject } from '../api/projects';
+import { addMonthsIso, DURATION_PRESETS, todayIso } from '../lib/duration-presets';
 import EmployeeMultiSelect from './EmployeeMultiSelect';
 
 export default function CreateProjectModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [startDate, setStartDate] = useState('');
+  // Defaults to today per business rule - a project always has a start date,
+  // it just doesn't need an end date up front (that can be set later).
+  const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState('');
   const [managers, setManagers] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Quick-fill helper: anchors off the current start date (or today, if it
+  // was cleared) and sets the end date that many months out.
+  function applyDurationPreset(months) {
+    const anchor = startDate || todayIso();
+    setStartDate(anchor);
+    setEndDate(addMonthsIso(anchor, months));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -89,7 +100,7 @@ export default function CreateProjectModal({ onClose, onCreated }) {
             </label>
 
             <label className="block flex-1">
-              <span className="mb-1 block text-sm font-medium text-gray-700">Ngày kết thúc</span>
+              <span className="mb-1 block text-sm font-medium text-gray-700">Ngày kết thúc (không bắt buộc)</span>
               <input
                 type="date"
                 value={endDate}
@@ -97,6 +108,20 @@ export default function CreateProjectModal({ onClose, onCreated }) {
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
             </label>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500">Thời lượng nhanh:</span>
+            {DURATION_PRESETS.map((preset) => (
+              <button
+                key={preset.months}
+                type="button"
+                onClick={() => applyDurationPreset(preset.months)}
+                className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
 
           <label className="mb-6 block">

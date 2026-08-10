@@ -5,6 +5,7 @@ import { getProject, updateProject } from '../api/projects';
 import AssignmentsPanel from '../components/AssignmentsPanel';
 import BackLink from '../components/BackLink';
 import ProjectManagersPanel from '../components/ProjectManagersPanel';
+import TasksPanel from '../components/TasksPanel';
 import { useAuth } from '../context/useAuth';
 import { PROJECT_STATUS_OPTIONS } from '../lib/project-status';
 import { roleHomePath } from '../lib/role-redirect';
@@ -221,6 +222,14 @@ export default function ProjectDetailPage() {
                 </span>
               )}
             </div>
+            {project.total_count !== undefined && (
+              <p className="mt-2 text-xs text-gray-500">
+                {project.done_count}/{project.total_count} task hoàn thành
+                {project.overdue_count > 0 && (
+                  <span className="font-medium text-red-600"> · {project.overdue_count} quá hạn</span>
+                )}
+              </p>
+            )}
           </>
         )}
       </div>
@@ -228,6 +237,8 @@ export default function ProjectDetailPage() {
       <ProjectManagersPanel project={project} canManage={canManage} onChanged={load} />
 
       <AssignmentsPanel project={project} canManage={canManageAssignments} />
+
+      <TasksPanel project={project} canManage={canManageAssignments} onChanged={load} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ const NAV = {
   projects: { to: '/projects', label: 'Dự án' },
   projectRoles: { to: '/project-roles', label: 'Vai trò dự án' },
   leaveRequests: { to: '/leave-requests', label: 'Đơn nghỉ phép' },
+  taskDelayRequests: { to: '/task-delay-requests', label: 'Yêu cầu gia hạn task' },
   profile: { to: '/me', label: 'Hồ sơ' },
 };
 
@@ -40,6 +41,7 @@ export function headerNavItems(employee) {
         NAV.projects,
         NAV.projectRoles,
         NAV.leaveRequests,
+        NAV.taskDelayRequests,
       ];
     case 'manager':
       return [
@@ -49,8 +51,9 @@ export function headerNavItems(employee) {
         NAV.projects,
         NAV.projectRoles,
         NAV.leaveRequests,
+        NAV.taskDelayRequests,
       ];
     default:
-      return [NAV.profile, NAV.leaveRequests];
+      return [NAV.profile, NAV.leaveRequests, NAV.taskDelayRequests];
   }
 }

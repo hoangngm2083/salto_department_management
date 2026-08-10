@@ -4,6 +4,7 @@ import { getEmployee } from '../api/employees';
 import { useAuth } from '../context/useAuth';
 import BackLink from '../components/BackLink';
 import EmployeeProfileView from '../components/EmployeeProfileView';
+import EmployeeTasksPanel from '../components/EmployeeTasksPanel';
 import WorkHistoryPanel from '../components/WorkHistoryPanel';
 import { roleHomePath } from '../lib/role-redirect';
 
@@ -66,6 +67,7 @@ export default function EmployeeProfilePage() {
       )}
       <EmployeeProfileView employee={employee} canEdit={canEdit} onSaved={setEmployee} />
       <WorkHistoryPanel employeeId={employee.id} />
+      <EmployeeTasksPanel employeeId={employee.id} />
     </div>
   );
 }
