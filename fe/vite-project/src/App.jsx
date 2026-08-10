@@ -33,6 +33,10 @@ export default function App() {
           <Route path="/me" element={<MePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
           <Route path="/leave-requests" element={<LeaveRequestsListPage />} />
+          {/* Open to every authenticated role - ProjectPolicy::view allows a plain
+              employee onto a project they have (or had) an assignment on, read-only.
+              The list at /projects stays admin/manager-only below. */}
+          <Route path="/projects/:slug" element={<ProjectDetailPage />} />
           <Route
             path="/403"
             element={
@@ -63,7 +67,6 @@ export default function App() {
             <Route path="/employees" element={<EmployeesListPage />} />
             <Route path="/levels" element={<LevelsListPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
-            <Route path="/projects/:slug" element={<ProjectDetailPage />} />
             <Route path="/project-roles" element={<ProjectRolesListPage />} />
           </Route>
 

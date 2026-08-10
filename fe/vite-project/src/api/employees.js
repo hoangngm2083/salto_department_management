@@ -27,3 +27,9 @@ export async function updateEmployee(id, payload) {
 export async function deleteEmployee(id) {
   await http.delete(`/employees/${id}`);
 }
+
+export async function getEmployeeWorkHistory(id) {
+  const { data } = await http.get(`/employees/${id}/projects`);
+
+  return data.data;
+}

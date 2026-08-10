@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getProject, updateProject } from '../api/projects';
+import AssignmentsPanel from '../components/AssignmentsPanel';
 import BackLink from '../components/BackLink';
 import ProjectManagersPanel from '../components/ProjectManagersPanel';
 import { useAuth } from '../context/useAuth';
 import { PROJECT_STATUS_OPTIONS } from '../lib/project-status';
+import { roleHomePath } from '../lib/role-redirect';
 
 export default function ProjectDetailPage() {
   const { slug } = useParams();
@@ -21,6 +23,12 @@ export default function ProjectDetailPage() {
   // ProjectPolicy::update/manageManagers are admin-only unconditionally (no
   // "own project" exception like departments have for their manager).
   const canManage = user.position === 'admin';
+  // manageAssignments, unlike manageManagers, is also granted to the
+  // project's own active managers (see plan mục 7.6). project is still null
+  // on the first render, before load() resolves.
+  const canManageAssignments =
+    canManage ||
+    (project?.managers ?? []).some((manager) => !manager.end_date && manager.employee_id === user.id);
 
   function load() {
     getProject(slug)
@@ -100,7 +108,10 @@ export default function ProjectDetailPage() {
 
   return (
     <div>
-      <BackLink fallback="/projects" className="mb-4 inline-block text-sm text-gray-600 hover:underline">
+      <BackLink
+        fallback={user.position === 'admin' || user.position === 'manager' ? '/projects' : roleHomePath(user)}
+        className="mb-4 inline-block text-sm text-gray-600 hover:underline"
+      >
         &larr; Trang trước
       </BackLink>
 
@@ -215,6 +226,8 @@ export default function ProjectDetailPage() {
       </div>
 
       <ProjectManagersPanel project={project} canManage={canManage} onChanged={load} />
+
+      <AssignmentsPanel project={project} canManage={canManageAssignments} />
     </div>
   );
 }
