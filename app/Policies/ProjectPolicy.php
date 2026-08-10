@@ -19,13 +19,18 @@ class ProjectPolicy
 
     /**
      * Manager: any project (mirrors viewAny). Plain employee: only a project
-     * they have (or have ever had) an assignment on - read-only, so they can
-     * see the team they work(ed) with without being able to browse every
-     * project in the company via GET /projects (still manager+-only).
+     * they are (or were) the PM of, or have (or have ever had) an assignment
+     * on - read-only, so they can see the team they work(ed) with without
+     * being able to browse every project in the company via GET /projects
+     * (still manager+-only).
      */
     public function view(Employee $employee, Project $project): bool
     {
         if ($employee->position === 'manager') {
+            return true;
+        }
+
+        if ($project->managers()->where('employee_id', $employee->id)->exists()) {
             return true;
         }
 

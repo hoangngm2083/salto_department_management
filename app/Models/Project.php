@@ -75,4 +75,12 @@ class Project extends Model
     {
         return $this->assignments()->where('status', ProjectAssignmentStatus::Active);
     }
+
+    /**
+     * @return HasMany<Task, $this>
+     */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
+    }
 }

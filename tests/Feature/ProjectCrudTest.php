@@ -5,6 +5,7 @@ use App\Models\Employee;
 use App\Models\Project;
 use App\Models\ProjectAssignment;
 use App\Models\ProjectManager;
+use App\Models\Task;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -205,6 +206,35 @@ test('getProject_existingSlug_projectReturned', function () {
         ->assertJsonPath('data.name', 'Visible Project');
 });
 
+test('getProject_taskProgressCounts_includedInResponse', function () {
+    // Arrange
+    $project = Project::factory()->create();
+    Task::factory()->create(['project_id' => $project->id, 'status' => 'done']);
+    Task::factory()->create(['project_id' => $project->id, 'status' => 'todo', 'due_date' => today()->subDay()]);
+    Task::factory()->create(['project_id' => $project->id, 'status' => 'in_progress', 'due_date' => today()->addDay()]);
+
+    // Act
+    $response = $this->getJson("/api/projects/{$project->slug}");
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonPath('data.total_count', 3)
+        ->assertJsonPath('data.done_count', 1)
+        ->assertJsonPath('data.overdue_count', 1);
+});
+
+test('getProjects_list_doesNotIncludeTaskProgressCounts', function () {
+    // Arrange
+    Project::factory()->create();
+
+    // Act
+    $response = $this->getJson('/api/projects');
+
+    // Assert
+    $response->assertSuccessful();
+    expect($response->json('data.data.0'))->not->toHaveKey('total_count');
+});
+
 test('getProject_unknownSlug_notFound', function () {
     // Arrange / Act
     $response = $this->getJson('/api/projects/does-not-exist');
@@ -219,6 +249,20 @@ test('getProject_employeeWithAssignment_viewable', function () {
     $project = Project::factory()->create();
     $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
     ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id]);
+    Sanctum::actingAs($employee, ['projects:read']);
+
+    // Act
+    $response = $this->getJson("/api/projects/{$project->slug}");
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.id', $project->id);
+});
+
+test('getProject_projectManagerWithoutAssignment_viewable', function () {
+    // Arrange
+    $project = Project::factory()->create();
+    $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'end_date' => null]);
     Sanctum::actingAs($employee, ['projects:read']);
 
     // Act

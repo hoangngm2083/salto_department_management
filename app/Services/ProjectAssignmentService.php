@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\EmployeeStatus;
 use App\Enums\ProjectAssignmentStatus;
 use App\Enums\ProjectStatus;
 use App\Models\AssignmentRolePeriod;
@@ -158,6 +159,35 @@ class ProjectAssignmentService
         $rolePeriod->update(['end_date' => today()->toDateString()]);
 
         return $rolePeriod->fresh('projectRole:id,name,slug');
+    }
+
+    /**
+     * Search the project's active members - employees with an active
+     * assignment on the project - by name and/or project role, for the
+     * "Members" tab and the task-assignment autocomplete alike.
+     */
+    public function searchMembers(Project $project, array $data): CursorPaginator
+    {
+        return Employee::query()
+            ->where('status', EmployeeStatus::Active)
+            ->whereHas(
+                'projectAssignments',
+                fn ($query) => $query->where('project_id', $project->id)->where('status', ProjectAssignmentStatus::Active)
+            )
+            ->with([
+                'currentLevel:id,name',
+                'projectAssignments' => fn ($query) => $query->where('project_id', $project->id)
+                    ->where('status', ProjectAssignmentStatus::Active)
+                    ->with('activeRolePeriods.projectRole:id,name'),
+            ])
+            ->when($data['name'] ?? null, fn ($query, $name) => $query->nameContains($name))
+            ->when($data['project_role_id'] ?? null, fn ($query, $roleId) => $query->whereHas(
+                'projectAssignments',
+                fn ($qq) => $qq->where('project_id', $project->id)
+                    ->whereHas('activeRolePeriods', fn ($qqq) => $qqq->where('project_role_id', $roleId))
+            ))
+            ->orderBy('id', 'desc')
+            ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
     }
 
     /**

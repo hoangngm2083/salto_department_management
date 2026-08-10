@@ -100,6 +100,14 @@ class Employee extends Authenticatable
     }
 
     /**
+     * @return HasMany<Task, $this>
+     */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'assigned_to');
+    }
+
+    /**
      * Filter to employees whose name contains the given text anywhere.
      *
      * LIKE wildcards in the search text are escaped so a name typed with a

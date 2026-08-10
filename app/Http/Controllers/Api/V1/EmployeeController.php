@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\GetEmployeesRequest;
 use App\Http\Requests\Employee\UpsertEmployeeRequest;
+use App\Http\Requests\Task\GetEmployeeTasksRequest;
 use App\Http\Resources\Employee\EmployeeCollection;
 use App\Http\Resources\Employee\EmployeeResource;
 use App\Http\Resources\Employee\EmployeeWorkHistoryResource;
+use App\Http\Resources\Task\TaskCollection;
 use App\Models\Employee;
 use App\Services\EmployeeService;
 use App\Services\ProjectAssignmentService;
+use App\Services\TaskService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 
@@ -19,6 +22,7 @@ class EmployeeController extends Controller
     public function __construct(
         private readonly EmployeeService $employeeService,
         private readonly ProjectAssignmentService $projectAssignmentService,
+        private readonly TaskService $taskService,
     ) {
         //
     }
@@ -111,6 +115,20 @@ class EmployeeController extends Controller
         return $this->successResponse(
             new EmployeeWorkHistoryResource($employee),
             'Employee work history retrieved successfully.'
+        );
+    }
+
+    /**
+     * Display the employee's assigned tasks across every project ("my tasks").
+     */
+    public function tasks(GetEmployeeTasksRequest $request, Employee $employee): JsonResponse
+    {
+        Gate::authorize('view', $employee);
+        $tasks = $this->taskService->getPaginatedForEmployee($employee, $request->validated());
+
+        return $this->successResponse(
+            new TaskCollection($tasks),
+            'Employee tasks retrieved successfully.'
         );
     }
 }

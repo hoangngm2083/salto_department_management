@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Project\GetProjectsRequest;
 use App\Http\Requests\Project\UpsertProjectRequest;
@@ -55,6 +56,13 @@ class ProjectController extends Controller
     {
         Gate::authorize('view', $project);
         $project->loadMissing('managers.employee:id,name');
+        $project->loadCount([
+            'tasks',
+            'tasks as done_count' => fn ($query) => $query->where('status', TaskStatus::Done),
+            'tasks as overdue_count' => fn ($query) => $query->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+                ->whereNotNull('due_date')
+                ->where('due_date', '<', today()),
+        ]);
 
         return $this->successResponse(
             new ProjectResource($project),

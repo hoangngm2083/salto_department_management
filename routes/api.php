@@ -12,7 +12,11 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\ProjectAssignmentController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ProjectManagerController;
+use App\Http\Controllers\Api\V1\ProjectMemberController;
 use App\Http\Controllers\Api\V1\ProjectRoleController;
+use App\Http\Controllers\Api\V1\TaskCommentController;
+use App\Http\Controllers\Api\V1\TaskController;
+use App\Http\Controllers\Api\V1\TaskDelayRequestController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
@@ -50,6 +54,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::get('employees/{employee}/projects', [EmployeeController::class, 'workHistory'])
         ->middleware('abilities:employees:read');
+    Route::get('employees/{employee}/tasks', [EmployeeController::class, 'tasks'])
+        ->middleware('abilities:tasks:read');
 
     Route::apiResource('projects', ProjectController::class)
         ->scoped(['project' => 'slug'])
@@ -75,6 +81,30 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('abilities:projects:manage-assignments');
     Route::delete('projects/{project:slug}/assignments/{assignment}/roles/{rolePeriod}', [AssignmentRolePeriodController::class, 'destroy'])
         ->middleware('abilities:projects:manage-assignments');
+
+    Route::get('projects/{project:slug}/members', [ProjectMemberController::class, 'index'])
+        ->middleware('abilities:projects:read');
+
+    Route::get('projects/{project:slug}/tasks', [TaskController::class, 'index'])
+        ->middleware('abilities:tasks:read');
+    Route::post('projects/{project:slug}/tasks', [TaskController::class, 'store'])
+        ->middleware('abilities:tasks:create');
+    Route::get('tasks/{task}', [TaskController::class, 'show'])
+        ->middleware('abilities:tasks:read');
+    Route::patch('tasks/{task}', [TaskController::class, 'update'])
+        ->middleware('abilities:tasks:update');
+
+    Route::get('tasks/{task}/comments', [TaskCommentController::class, 'index'])
+        ->middleware('abilities:task-comments:read');
+    Route::post('tasks/{task}/comments', [TaskCommentController::class, 'store'])
+        ->middleware('abilities:task-comments:create');
+
+    Route::apiResource('task-delay-requests', TaskDelayRequestController::class)
+        ->only(['index', 'store', 'show', 'update'])
+        ->middlewareFor('index', 'abilities:task-delay-requests:read')
+        ->middlewareFor('show', 'abilities:task-delay-requests:read')
+        ->middlewareFor('store', 'abilities:task-delay-requests:create')
+        ->middlewareFor('update', 'abilities:task-delay-requests:update');
 
     Route::apiResource('project-roles', ProjectRoleController::class)
         ->scoped(['project_role' => 'slug'])
