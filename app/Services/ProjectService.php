@@ -16,6 +16,13 @@ class ProjectService
         return Project::query()
             ->with('managers.employee:id,name')
             ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when(
+                $data['manager_employee_id'] ?? null,
+                fn ($query, $managerEmployeeId) => $query->whereHas(
+                    'activeManagers',
+                    fn ($managers) => $managers->where('employee_id', $managerEmployeeId)
+                )
+            )
             ->orderBy('id', 'desc')
             ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
     }

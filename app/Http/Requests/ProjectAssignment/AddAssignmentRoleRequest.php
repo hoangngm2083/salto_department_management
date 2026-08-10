@@ -1,13 +1,12 @@
 <?php
 
-namespace App\Http\Requests\Project;
+namespace App\Http\Requests\ProjectAssignment;
 
-use App\Enums\ProjectStatus;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class GetProjectsRequest extends FormRequest
+class AddAssignmentRoleRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -25,10 +24,12 @@ class GetProjectsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', Rule::enum(ProjectStatus::class)],
-            'manager_employee_id' => ['nullable', 'integer', Rule::exists('employees', 'id')],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'cursor' => ['nullable', 'string'],
+            'project_role_id' => [
+                'required',
+                'integer',
+                Rule::exists('project_roles', 'id')->where('status', 'active'),
+            ],
+            'start_date' => ['nullable', 'date'],
         ];
     }
 }

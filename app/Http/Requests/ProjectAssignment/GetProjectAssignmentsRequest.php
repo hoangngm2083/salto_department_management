@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Http\Requests\Project;
+namespace App\Http\Requests\ProjectAssignment;
 
-use App\Enums\ProjectStatus;
+use App\Enums\ProjectAssignmentStatus;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class GetProjectsRequest extends FormRequest
+class GetProjectAssignmentsRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -25,8 +25,7 @@ class GetProjectsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', Rule::enum(ProjectStatus::class)],
-            'manager_employee_id' => ['nullable', 'integer', Rule::exists('employees', 'id')],
+            'status' => ['nullable', Rule::enum(ProjectAssignmentStatus::class)],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'cursor' => ['nullable', 'string'],
         ];

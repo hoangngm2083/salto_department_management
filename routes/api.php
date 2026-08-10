@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AssignmentRolePeriodController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\EmployeeController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\LeaveRequestController;
 use App\Http\Controllers\Api\V1\LevelController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\ProjectAssignmentController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ProjectManagerController;
 use App\Http\Controllers\Api\V1\ProjectRoleController;
@@ -46,6 +48,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('update', 'abilities:employees:update')
         ->middlewareFor('destroy', 'abilities:employees:delete');
 
+    Route::get('employees/{employee}/projects', [EmployeeController::class, 'workHistory'])
+        ->middleware('abilities:employees:read');
+
     Route::apiResource('projects', ProjectController::class)
         ->scoped(['project' => 'slug'])
         ->middlewareFor('index', 'abilities:projects:read')
@@ -58,6 +63,18 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('abilities:projects:manage-managers');
     Route::delete('projects/{project:slug}/managers/{projectManager}', [ProjectManagerController::class, 'destroy'])
         ->middleware('abilities:projects:manage-managers');
+
+    Route::get('projects/{project:slug}/assignments', [ProjectAssignmentController::class, 'index'])
+        ->middleware('abilities:projects:read');
+    Route::post('projects/{project:slug}/assignments', [ProjectAssignmentController::class, 'store'])
+        ->middleware('abilities:projects:manage-assignments');
+    Route::delete('projects/{project:slug}/assignments/{assignment}', [ProjectAssignmentController::class, 'destroy'])
+        ->middleware('abilities:projects:manage-assignments');
+
+    Route::post('projects/{project:slug}/assignments/{assignment}/roles', [AssignmentRolePeriodController::class, 'store'])
+        ->middleware('abilities:projects:manage-assignments');
+    Route::delete('projects/{project:slug}/assignments/{assignment}/roles/{rolePeriod}', [AssignmentRolePeriodController::class, 'destroy'])
+        ->middleware('abilities:projects:manage-assignments');
 
     Route::apiResource('project-roles', ProjectRoleController::class)
         ->scoped(['project_role' => 'slug'])

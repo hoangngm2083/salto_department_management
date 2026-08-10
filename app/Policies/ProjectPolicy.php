@@ -17,9 +17,19 @@ class ProjectPolicy
         return $employee->position === 'manager';
     }
 
+    /**
+     * Manager: any project (mirrors viewAny). Plain employee: only a project
+     * they have (or have ever had) an assignment on - read-only, so they can
+     * see the team they work(ed) with without being able to browse every
+     * project in the company via GET /projects (still manager+-only).
+     */
     public function view(Employee $employee, Project $project): bool
     {
-        return $employee->position === 'manager';
+        if ($employee->position === 'manager') {
+            return true;
+        }
+
+        return $project->assignments()->where('employee_id', $employee->id)->exists();
     }
 
     public function create(Employee $employee): bool
@@ -55,5 +65,16 @@ class ProjectPolicy
     public function manageManagers(Employee $employee, Project $project): bool
     {
         return false;
+    }
+
+    /**
+     * Create/end assignments and manage role periods for the project's team.
+     * Allowed for admin or any of the project's own active managers (unlike
+     * manageManagers, which is admin-only) — new_business.md 5.2: managers
+     * "add employees to projects if permitted".
+     */
+    public function manageAssignments(Employee $employee, Project $project): bool
+    {
+        return $project->activeManagers()->where('employee_id', $employee->id)->exists();
     }
 }

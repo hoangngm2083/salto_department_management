@@ -3,6 +3,8 @@
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Project;
+use App\Models\ProjectAssignment;
+use App\Models\ProjectManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -54,6 +56,26 @@ test('getProjects_statusFilter_matchingProjectsReturned', function () {
     $statuses = collect($response->json('data.data'))->pluck('status')->unique()->values()->all();
 
     expect($statuses)->toBe(['active']);
+});
+
+test('getProjects_managerFilter_onlyProjectsWithActiveManagerReturned', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager', 'status' => 'active']);
+    $matchingProject = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $matchingProject->id, 'employee_id' => $manager->id, 'end_date' => null]);
+
+    $formerlyManagedProject = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $formerlyManagedProject->id, 'employee_id' => $manager->id, 'end_date' => today()]);
+
+    Project::factory()->create();
+
+    // Act
+    $response = $this->getJson("/api/projects?manager_employee_id={$manager->id}");
+
+    // Assert
+    $response->assertSuccessful();
+    expect($response->json('data.data'))->toHaveCount(1);
+    expect($response->json('data.data.0.id'))->toBe($matchingProject->id);
 });
 
 test('getProjects_invalidStatus_validationError', function () {
@@ -190,6 +212,47 @@ test('getProject_unknownSlug_notFound', function () {
     // Assert
     $response->assertNotFound()
         ->assertJsonPath('success', false);
+});
+
+test('getProject_employeeWithAssignment_viewable', function () {
+    // Arrange
+    $project = Project::factory()->create();
+    $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
+    ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id]);
+    Sanctum::actingAs($employee, ['projects:read']);
+
+    // Act
+    $response = $this->getJson("/api/projects/{$project->slug}");
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.id', $project->id);
+});
+
+test('getProject_employeeWithoutAssignment_forbidden', function () {
+    // Arrange
+    $project = Project::factory()->create();
+    $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
+    Sanctum::actingAs($employee, ['projects:read']);
+
+    // Act
+    $response = $this->getJson("/api/projects/{$project->slug}");
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('getProjects_employeePosition_forbidden', function () {
+    // Arrange
+    $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
+    Sanctum::actingAs($employee, ['projects:read']);
+
+    // Act
+    $response = $this->getJson('/api/projects');
+
+    // Assert: viewAny stays manager+-only even though view() now allows
+    // employees with an assignment - an employee still can't browse the
+    // full project list, only reach a project they're actually on.
+    $response->assertForbidden();
 });
 
 test('updateProject_validPayload_updated', function () {

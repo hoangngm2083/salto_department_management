@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ProjectAssignmentStatus;
 use App\Enums\ProjectStatus;
 use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -57,5 +58,21 @@ class Project extends Model
     public function activeManagers(): HasMany
     {
         return $this->managers()->whereNull('end_date');
+    }
+
+    /**
+     * @return HasMany<ProjectAssignment, $this>
+     */
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(ProjectAssignment::class);
+    }
+
+    /**
+     * @return HasMany<ProjectAssignment, $this>
+     */
+    public function activeAssignments(): HasMany
+    {
+        return $this->assignments()->where('status', ProjectAssignmentStatus::Active);
     }
 }
