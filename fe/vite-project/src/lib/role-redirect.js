@@ -15,7 +15,7 @@ export function roleHomePath(employee) {
 
 const NAV = {
   departments: { to: '/departments', label: 'Phòng ban' },
-  employees: { to: '/employees', label: 'Người dùng' },
+  employees: { to: '/employees', label: 'Nhân viên' },
   levels: { to: '/levels', label: 'Cấp bậc' },
   projects: { to: '/projects', label: 'Dự án' },
   projectRoles: { to: '/project-roles', label: 'Vai trò dự án' },

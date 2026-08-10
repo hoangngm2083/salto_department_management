@@ -44,7 +44,7 @@ export default function EmployeesListPage() {
   }, []);
 
   async function handleDelete(employee) {
-    if (!window.confirm(`Xóa người dùng "${employee.name}"?`)) {
+    if (!window.confirm(`Xóa nhân viên "${employee.name}"?`)) {
       return;
     }
 
@@ -52,7 +52,7 @@ export default function EmployeesListPage() {
 
     try {
       await deleteEmployee(employee.id);
-      toast.success('Xóa người dùng thành công.');
+      toast.success('Xóa nhân viên thành công.');
       removeItem(employee.id);
     } catch {
       // http.js interceptor already shows a toast for the error
@@ -76,7 +76,7 @@ export default function EmployeesListPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Danh sách người dùng</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Danh sách nhân viên</h1>
         <div className="flex gap-2">
           {isAdmin && (
             <>
@@ -139,7 +139,7 @@ export default function EmployeesListPage() {
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Phòng ban</th>
               <th className="px-4 py-2 font-medium">Vai trò</th>
-              <th className="px-4 py-2 font-medium">Hành động</th>
+              {isAdmin && <th className="px-4 py-2 font-medium">Hành động</th>}
             </tr>
           </thead>
           <tbody
@@ -147,7 +147,7 @@ export default function EmployeesListPage() {
           >
             {loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={isAdmin ? 5 : 4} className="px-4 py-6 text-center text-gray-500">
                   Đang tải...
                 </td>
               </tr>
@@ -155,8 +155,8 @@ export default function EmployeesListPage() {
 
             {!loading && employees.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
-                  Không có người dùng nào.
+                <td colSpan={isAdmin ? 5 : 4} className="px-4 py-6 text-center text-gray-500">
+                  Không có nhân viên nào.
                 </td>
               </tr>
             )}
@@ -164,7 +164,11 @@ export default function EmployeesListPage() {
             {!loading &&
               employees.map((employee) => (
                 <tr key={employee.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-2">{employee.name}</td>
+                  <td className="px-4 py-2">
+                    <Link to={`/employees/${employee.id}`} className="text-gray-900 hover:underline">
+                      {employee.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2 text-gray-500">{employee.email}</td>
                   <td className="px-4 py-2 text-gray-500">{employee.department_name}</td>
                   <td className="px-4 py-2">
@@ -172,26 +176,18 @@ export default function EmployeesListPage() {
                       {ROLE_LABELS[employee.position] ?? employee.position}
                     </span>
                   </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      <Link
-                        to={`/employees/${employee.id}`}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                  {isAdmin && (
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(employee)}
+                        disabled={deletingId === employee.id}
+                        className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
                       >
-                        Xem chi tiết
-                      </Link>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(employee)}
-                          disabled={deletingId === employee.id}
-                          className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
-                        >
-                          {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
-                        </button>
-                      )}
-                    </div>
-                  </td>
+                        {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
           </tbody>

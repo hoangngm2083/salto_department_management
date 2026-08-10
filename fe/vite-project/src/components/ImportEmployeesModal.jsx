@@ -170,7 +170,7 @@ export default function ImportEmployeesModal({ onClose, onImported }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Nhập người dùng từ CSV</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Nhập nhân viên từ CSV</h2>
           <button
             type="button"
             onClick={handleClose}

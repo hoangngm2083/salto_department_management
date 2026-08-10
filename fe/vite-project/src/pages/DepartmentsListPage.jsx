@@ -196,7 +196,9 @@ export default function DepartmentsListPage() {
                           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
                         />
                       ) : (
-                        department.name
+                        <Link to={`/departments/${department.slug}`} className="text-gray-900 hover:underline">
+                          {department.name}
+                        </Link>
                       )}
                     </td>
                     <td className="px-4 py-2 text-gray-500">{department.slug}</td>
@@ -256,12 +258,6 @@ export default function DepartmentsListPage() {
                           >
                             {isDeleting ? 'Đang xóa...' : 'Xóa'}
                           </button>
-                          <Link
-                            to={`/departments/${department.slug}`}
-                            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                          >
-                            Xem chi tiết
-                          </Link>
                         </div>
                       )}
                     </td>

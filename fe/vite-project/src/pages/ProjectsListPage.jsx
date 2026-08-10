@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { deleteProject, listProjects, updateProject } from '../api/projects';
 import CreateProjectModal from '../components/CreateProjectModal';
+import EmployeeSearchSelect from '../components/EmployeeSearchSelect';
 import Pager from '../components/Pager';
 import { useAuth } from '../context/useAuth';
 import { PROJECT_STATUS_OPTIONS } from '../lib/project-status';
@@ -22,6 +23,8 @@ export default function ProjectsListPage() {
 
   const [status, setStatus] = useState('all');
   const [search, setSearch] = useState('');
+  const [managerId, setManagerId] = useState(null);
+  const [managerName, setManagerName] = useState(null);
 
   const {
     items: projects,
@@ -35,8 +38,13 @@ export default function ProjectsListPage() {
     removeItem,
   } = useCursorList({
     fetcher: listProjects,
-    params: { status: status === 'all' ? undefined : status },
-    belongsInList: (project) => status === 'all' || project.status === status,
+    params: {
+      status: status === 'all' ? undefined : status,
+      manager_employee_id: managerId || undefined,
+    },
+    belongsInList: (project) =>
+      (status === 'all' || project.status === status) &&
+      (!managerId || project.managers.some((m) => !m.end_date && m.employee_id === managerId)),
   });
 
   const [editingSlug, setEditingSlug] = useState(null);
@@ -124,6 +132,17 @@ export default function ProjectsListPage() {
             </option>
           ))}
         </select>
+        <div className="w-64">
+          <EmployeeSearchSelect
+            value={managerId}
+            valueLabel={managerName}
+            onChange={(id, name) => {
+              setManagerId(id);
+              setManagerName(name);
+            }}
+            placeholder="Lọc theo Project Manager..."
+          />
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -131,9 +150,10 @@ export default function ProjectsListPage() {
           <thead className="border-b border-gray-200 bg-gray-50 text-gray-600">
             <tr>
               <th className="px-4 py-2 font-medium">Tên</th>
+              <th className="px-4 py-2 font-medium">Mô tả</th>
               <th className="px-4 py-2 font-medium">Project Manager</th>
               <th className="px-4 py-2 font-medium">Trạng thái</th>
-              <th className="px-4 py-2 font-medium">Hành động</th>
+              {isAdmin && <th className="px-4 py-2 font-medium">Hành động</th>}
             </tr>
           </thead>
           <tbody
@@ -141,7 +161,7 @@ export default function ProjectsListPage() {
           >
             {loading && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={isAdmin ? 5 : 4} className="px-4 py-6 text-center text-gray-500">
                   Đang tải...
                 </td>
               </tr>
@@ -149,7 +169,7 @@ export default function ProjectsListPage() {
 
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={isAdmin ? 5 : 4} className="px-4 py-6 text-center text-gray-500">
                   Không có dự án nào.
                 </td>
               </tr>
@@ -171,7 +191,14 @@ export default function ProjectsListPage() {
                           className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
                         />
                       ) : (
-                        project.name
+                        <Link to={`/projects/${project.slug}`} className="text-gray-900 hover:underline">
+                          {project.name}
+                        </Link>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-gray-500">
+                      {project.description || (
+                        <span className="italic text-gray-400">Chưa có mô tả về dự án!</span>
                       )}
                     </td>
                     <td className="px-4 py-2 text-gray-500">{activeManagerNames(project)}</td>
@@ -194,56 +221,48 @@ export default function ProjectsListPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2">
-                      {isEditing ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            disabled={saving}
-                            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdate(project)}
-                            disabled={saving}
-                            className="rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50 hover:bg-gray-700"
-                          >
-                            {saving ? 'Đang lưu...' : 'Lưu'}
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          {isAdmin && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startEditing(project)}
-                                className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                              >
-                                Cập nhật
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(project)}
-                                disabled={isDeleting}
-                                className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
-                              >
-                                {isDeleting ? 'Đang xóa...' : 'Xóa'}
-                              </button>
-                            </>
-                          )}
-                          <Link
-                            to={`/projects/${project.slug}`}
-                            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                          >
-                            Xem chi tiết
-                          </Link>
-                        </div>
-                      )}
-                    </td>
+                    {isAdmin && (
+                      <td className="px-4 py-2">
+                        {isEditing ? (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={cancelEditing}
+                              disabled={saving}
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdate(project)}
+                              disabled={saving}
+                              className="rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50 hover:bg-gray-700"
+                            >
+                              {saving ? 'Đang lưu...' : 'Lưu'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEditing(project)}
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                            >
+                              Cập nhật
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(project)}
+                              disabled={isDeleting}
+                              className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
+                            >
+                              {isDeleting ? 'Đang xóa...' : 'Xóa'}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
