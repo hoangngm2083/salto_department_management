@@ -106,4 +106,14 @@ class TaskService
 
         return $task->fresh(['assignee:id,name', 'creator:id,name', 'reviewer:id,name']);
     }
+
+    /**
+     * (Re)assign a task to a project member, or unassign it by passing null.
+     */
+    public function assign(Task $task, ?int $employeeId): Task
+    {
+        $task->update(['assigned_to' => $employeeId]);
+
+        return $task->fresh(['assignee:id,name', 'creator:id,name', 'reviewer:id,name']);
+    }
 }

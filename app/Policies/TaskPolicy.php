@@ -20,9 +20,11 @@ class TaskPolicy
     }
 
     /**
-     * Manager: any task. Plain employee: only a task assigned to them, on a
-     * project they are (or were) the PM of, or on a project they have (or
-     * had) an assignment on - mirrors ProjectPolicy::view.
+     * Manager: any task. Plain employee: only a task assigned to them, or on
+     * a project they are *currently* the active PM of - a former PM (end_date
+     * set) loses task-detail/comment access same as a plain project member,
+     * only the task list stays visible to them (gated separately by
+     * ProjectPolicy::view, which does allow past involvement).
      */
     public function view(Employee $employee, Task $task): bool
     {
@@ -34,11 +36,7 @@ class TaskPolicy
             return true;
         }
 
-        if ($task->project->managers()->where('employee_id', $employee->id)->exists()) {
-            return true;
-        }
-
-        return $task->project->assignments()->where('employee_id', $employee->id)->exists();
+        return $this->isProjectManager($employee, $task->project);
     }
 
     /**
@@ -81,6 +79,27 @@ class TaskPolicy
         return false;
     }
 
+    /**
+     * Assign a task to a project member, or unassign it - gated the same as
+     * creating a task (only the project's own active manager). Direct
+     * reassignment (an already-assigned task moved straight to a different
+     * employee) is not allowed: the PM must unassign first, then assign the
+     * new person as a separate call - assigning from empty and unassigning
+     * to empty both remain always allowed.
+     */
+    public function assign(Employee $employee, Task $task, ?int $targetAssignedTo): bool
+    {
+        if (! $this->isProjectManager($employee, $task->project)) {
+            return false;
+        }
+
+        if ($task->assigned_to === null || $targetAssignedTo === null) {
+            return true;
+        }
+
+        return $targetAssignedTo === $task->assigned_to;
+    }
+
     public function delete(Employee $employee, Task $task): bool
     {
         return false;
@@ -99,10 +118,11 @@ class TaskPolicy
     /**
      * Post a comment - unlike view() (any manager may browse any task, for
      * consistency with ProjectPolicy::view), commenting is limited to people
-     * actually involved with the task: the project's own active manager, the
-     * assignee, or a project member. A manager who merely has the broad
-     * "view any project" bypass but isn't this project's own PM should not
-     * be able to write here.
+     * actually involved with the task: the project's own active manager, or
+     * the assignee. A manager who merely has the broad "view any project"
+     * bypass but isn't this project's own PM should not be able to write
+     * here - same scope as view() now that a plain project member is no
+     * longer enough for either.
      */
     public function comment(Employee $employee, Task $task): bool
     {
@@ -110,11 +130,7 @@ class TaskPolicy
             return true;
         }
 
-        if ($task->assigned_to === $employee->id) {
-            return true;
-        }
-
-        return $task->project->assignments()->where('employee_id', $employee->id)->exists();
+        return $task->assigned_to === $employee->id;
     }
 
     private function isProjectManager(Employee $employee, Project $project): bool

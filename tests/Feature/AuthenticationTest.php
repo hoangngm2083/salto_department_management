@@ -52,14 +52,8 @@ test('login_managerCredentials_abilitiesPersisted', function () {
     expect($manager->tokens()->latest('id')->firstOrFail()->abilities)->toBe([
         'profile:read',
         'employees:read',
-        'employees:create',
         'employees:update',
-        'departments:read',
-        'departments:update',
-        'levels:read',
         'projects:read',
-        'projects:manage-assignments',
-        'project-roles:read',
         'tasks:read',
         'tasks:create',
         'tasks:update',
@@ -73,6 +67,12 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'leave-requests:update',
         'notifications:read',
         'notifications:update',
+        'employees:create',
+        'departments:read',
+        'departments:update',
+        'levels:read',
+        'projects:manage-assignments',
+        'project-roles:read',
     ]);
 });
 
@@ -100,6 +100,7 @@ test('login_employeeCredentials_abilitiesPersisted', function () {
         'employees:update',
         'projects:read',
         'tasks:read',
+        'tasks:create',
         'tasks:update',
         'task-comments:read',
         'task-comments:create',

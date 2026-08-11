@@ -94,6 +94,21 @@ test('createTask_asProjectManager_created', function () {
     $response->assertCreated();
 });
 
+test('createTask_employeeAsProjectManager_created', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $pm = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id, 'status' => 'active']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id, 'end_date' => null]);
+    Sanctum::actingAs($pm, ['tasks:read', 'tasks:create']);
+
+    // Act
+    $response = $this->postJson("/api/projects/{$project->slug}/tasks", ['title' => 'PM created task']);
+
+    // Assert
+    $response->assertCreated();
+});
+
 test('createTask_managerNotProjectManager_forbidden', function () {
     // Arrange
     $manager = Employee::factory()->create(['position' => 'manager', 'status' => 'active']);
@@ -240,6 +255,128 @@ test('updateTaskStatus_cancelFromDone_forbidden', function () {
 
     // Act
     $response = $this->patchJson("/api/tasks/{$task->id}", ['status' => 'cancelled']);
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('assignTask_asProjectManager_assigned', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $pm = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id, 'status' => 'active']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id, 'end_date' => null]);
+    $employee = Employee::factory()->create(['status' => 'active']);
+    ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id, 'assigned_to' => null]);
+    Sanctum::actingAs($pm, ['tasks:read', 'tasks:update']);
+
+    // Act
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => $employee->id]);
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.assigned_to', $employee->id);
+    $this->assertDatabaseHas('tasks', ['id' => $task->id, 'assigned_to' => $employee->id]);
+});
+
+test('assignTask_withNull_unassigns', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $pm = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id, 'status' => 'active']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id, 'end_date' => null]);
+    $employee = Employee::factory()->create(['status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id, 'assigned_to' => $employee->id]);
+    Sanctum::actingAs($pm, ['tasks:read', 'tasks:update']);
+
+    // Act
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => null]);
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.assigned_to', null);
+});
+
+test('assignTask_directReassignToDifferentEmployee_forbidden', function () {
+    // Arrange - task already has an assignee; the PM must unassign first and
+    // assign the new person as a separate call, not swap directly.
+    $department = Department::factory()->create();
+    $pm = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id, 'status' => 'active']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id, 'end_date' => null]);
+    $currentAssignee = Employee::factory()->create(['status' => 'active']);
+    $newAssignee = Employee::factory()->create(['status' => 'active']);
+    ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $newAssignee->id, 'status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id, 'assigned_to' => $currentAssignee->id]);
+    Sanctum::actingAs($pm, ['tasks:read', 'tasks:update']);
+
+    // Act
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => $newAssignee->id]);
+
+    // Assert
+    $response->assertForbidden();
+    $this->assertDatabaseHas('tasks', ['id' => $task->id, 'assigned_to' => $currentAssignee->id]);
+});
+
+test('assignTask_reassignToSameEmployee_allowed', function () {
+    // Arrange - re-submitting the same assignee is a no-op, not a reassignment.
+    $department = Department::factory()->create();
+    $pm = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id, 'status' => 'active']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id, 'end_date' => null]);
+    $employee = Employee::factory()->create(['status' => 'active']);
+    ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id, 'assigned_to' => $employee->id]);
+    Sanctum::actingAs($pm, ['tasks:read', 'tasks:update']);
+
+    // Act
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => $employee->id]);
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.assigned_to', $employee->id);
+});
+
+test('assignTask_asAdmin_directReassignAllowed', function () {
+    // Arrange - admin bypasses the PM-only direct-reassignment restriction
+    // via TaskPolicy::before(), same as every other business-state check there.
+    $project = Project::factory()->create();
+    $currentAssignee = Employee::factory()->create(['status' => 'active']);
+    $newAssignee = Employee::factory()->create(['status' => 'active']);
+    ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $newAssignee->id, 'status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id, 'assigned_to' => $currentAssignee->id]);
+
+    // Act - uses the admin actor from beforeEach
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => $newAssignee->id]);
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.assigned_to', $newAssignee->id);
+});
+
+test('assignTask_employeeWithoutActiveAssignment_validationError', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $pm = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id, 'status' => 'active']);
+    $project = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id, 'end_date' => null]);
+    $employee = Employee::factory()->create(['status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id]);
+    Sanctum::actingAs($pm, ['tasks:read', 'tasks:update']);
+
+    // Act
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => $employee->id]);
+
+    // Assert
+    $response->assertUnprocessable()->assertJsonValidationErrors(['assigned_to'], 'errors');
+});
+
+test('assignTask_managerNotProjectManager_forbidden', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager', 'status' => 'active']);
+    $project = Project::factory()->create();
+    $task = Task::factory()->create(['project_id' => $project->id]);
+    Sanctum::actingAs($manager, ['tasks:read', 'tasks:update']);
+
+    // Act
+    $response = $this->patchJson("/api/tasks/{$task->id}/assign", ['assigned_to' => null]);
 
     // Assert
     $response->assertForbidden();

@@ -23,3 +23,9 @@ export async function updateTaskStatus(id, payload) {
 
   return data.data;
 }
+
+export async function assignTask(id, payload) {
+  const { data } = await http.patch(`/tasks/${id}/assign`, payload);
+
+  return data.data;
+}

@@ -39,51 +39,43 @@ class AuthService
      */
     private function abilitiesFor(Employee $employee): array
     {
+        $employeeAbilities = [
+            'profile:read',
+            'employees:read',
+            'employees:update',
+            'projects:read',
+            'tasks:read',
+            'tasks:create',
+            'tasks:update',
+            'task-comments:read',
+            'task-comments:create',
+            'task-delay-requests:read',
+            'task-delay-requests:create',
+            'task-delay-requests:update',
+            'leave-requests:read',
+            'leave-requests:create',
+            'leave-requests:update',
+            'notifications:read',
+            'notifications:update',
+        ];
+
+        // A manager can do everything an employee can, plus department/staffing
+        // management - kept as employeeAbilities + extras so the two lists never
+        // drift out of sync when an ability is added/removed for employees.
+        $managerAbilities = [
+            ...$employeeAbilities,
+            'employees:create',
+            'departments:read',
+            'departments:update',
+            'levels:read',
+            'projects:manage-assignments',
+            'project-roles:read',
+        ];
+
         return match ($employee->position) {
             'admin' => ['*'],
-            'manager' => [
-                'profile:read',
-                'employees:read',
-                'employees:create',
-                'employees:update',
-                'departments:read',
-                'departments:update',
-                'levels:read',
-                'projects:read',
-                'projects:manage-assignments',
-                'project-roles:read',
-                'tasks:read',
-                'tasks:create',
-                'tasks:update',
-                'task-comments:read',
-                'task-comments:create',
-                'task-delay-requests:read',
-                'task-delay-requests:create',
-                'task-delay-requests:update',
-                'leave-requests:read',
-                'leave-requests:create',
-                'leave-requests:update',
-                'notifications:read',
-                'notifications:update',
-            ],
-            default => [
-                'profile:read',
-                'employees:read',
-                'employees:update',
-                'projects:read',
-                'tasks:read',
-                'tasks:update',
-                'task-comments:read',
-                'task-comments:create',
-                'task-delay-requests:read',
-                'task-delay-requests:create',
-                'task-delay-requests:update',
-                'leave-requests:read',
-                'leave-requests:create',
-                'leave-requests:update',
-                'notifications:read',
-                'notifications:update',
-            ],
+            'manager' => $managerAbilities,
+            default => $employeeAbilities,
         };
     }
 }

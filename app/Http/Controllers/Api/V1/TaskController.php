@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Task\AssignTaskRequest;
 use App\Http\Requests\Task\GetTasksRequest;
 use App\Http\Requests\Task\StoreTaskRequest;
 use App\Http\Requests\Task\UpdateTaskRequest;
@@ -86,6 +87,24 @@ class TaskController extends Controller
         return $this->successResponse(
             new TaskResource($task),
             'Task updated successfully.'
+        );
+    }
+
+    /**
+     * Assign the task to a project member, or unassign it - not a direct
+     * reassignment between two people (see TaskPolicy::assign()). Kept
+     * separate from update() since it isn't a status transition - gated by
+     * its own policy ability (project's own active manager only).
+     */
+    public function assign(AssignTaskRequest $request, Task $task): JsonResponse
+    {
+        Gate::authorize('assign', [$task, $request->validated('assigned_to')]);
+
+        $task = $this->taskService->assign($task, $request->validated('assigned_to'));
+
+        return $this->successResponse(
+            new TaskResource($task),
+            'Task assigned successfully.'
         );
     }
 }

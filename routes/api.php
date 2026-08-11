@@ -97,6 +97,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('abilities:tasks:read');
     Route::patch('tasks/{task}', [TaskController::class, 'update'])
         ->middleware('abilities:tasks:update');
+    Route::patch('tasks/{task}/assign', [TaskController::class, 'assign'])
+        ->middleware('abilities:tasks:update');
 
     Route::get('tasks/{task}/comments', [TaskCommentController::class, 'index'])
         ->middleware('abilities:task-comments:read');

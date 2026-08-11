@@ -84,8 +84,28 @@ test('getTask_projectOwnManagerWithoutAssignment_viewable', function () {
     $response->assertSuccessful();
 });
 
-test('getTask_employeeProjectMemberNotAssigned_viewable', function () {
-    // Arrange
+test('getTask_formerProjectManager_forbidden', function () {
+    // Arrange - a PM whose term has ended (end_date set) is no longer this
+    // project's active manager, so task detail/comments lock behind the same
+    // rule as any outside employee - only the task list stays reachable to
+    // them via ProjectPolicy::view (which does allow past involvement).
+    $project = Project::factory()->create();
+    $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'end_date' => now()->subDay()]);
+    $task = Task::factory()->create(['project_id' => $project->id]);
+    Sanctum::actingAs($employee, ['tasks:read']);
+
+    // Act
+    $response = $this->getJson("/api/tasks/{$task->id}");
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('getTask_employeeProjectMemberNotAssigned_forbidden', function () {
+    // Arrange - being a plain project member (an assignment, but not the
+    // assignee or the project's own PM) is enough to see the task in the
+    // project's task list, but not to open its detail/comments.
     $project = Project::factory()->create();
     $employee = Employee::factory()->create(['position' => 'employee', 'status' => 'active']);
     ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'status' => 'active']);
@@ -96,5 +116,5 @@ test('getTask_employeeProjectMemberNotAssigned_viewable', function () {
     $response = $this->getJson("/api/tasks/{$task->id}");
 
     // Assert
-    $response->assertSuccessful();
+    $response->assertForbidden();
 });

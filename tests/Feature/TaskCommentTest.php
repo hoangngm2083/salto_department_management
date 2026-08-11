@@ -64,6 +64,23 @@ test('createComment_managerNotProjectManagerNorMember_forbidden', function () {
     $response->assertForbidden();
 });
 
+test('createComment_projectMemberNotAssignee_forbidden', function () {
+    // Arrange - a plain project member (has an assignment, but isn't the
+    // assignee or this project's own PM) may no longer comment - nor even
+    // view the task detail this endpoint hangs off (Gate::authorize('view')).
+    $project = Project::factory()->create();
+    $employee = Employee::factory()->create(['status' => 'active']);
+    ProjectAssignment::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id, 'status' => 'active']);
+    $task = Task::factory()->create(['project_id' => $project->id]);
+    Sanctum::actingAs($employee, ['task-comments:read', 'task-comments:create']);
+
+    // Act
+    $response = $this->postJson("/api/tasks/{$task->id}/comments", ['body' => 'Hi']);
+
+    // Assert
+    $response->assertForbidden();
+});
+
 test('createComment_unrelatedEmployee_forbidden', function () {
     // Arrange
     $task = Task::factory()->create();
