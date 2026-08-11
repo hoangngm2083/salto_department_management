@@ -12,6 +12,8 @@ import DepartmentDetailPage from './pages/DepartmentDetailPage';
 import EmployeesListPage from './pages/EmployeesListPage';
 import LeaveRequestsListPage from './pages/LeaveRequestsListPage';
 import LevelsListPage from './pages/LevelsListPage';
+import MyProjectsPage from './pages/MyProjectsPage';
+import MyTasksPage from './pages/MyTasksPage';
 import ProjectsListPage from './pages/ProjectsListPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectRolesListPage from './pages/ProjectRolesListPage';
@@ -37,6 +39,8 @@ export default function App() {
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
           <Route path="/leave-requests" element={<LeaveRequestsListPage />} />
           <Route path="/task-delay-requests" element={<TaskDelayRequestsListPage />} />
+          <Route path="/my-tasks" element={<MyTasksPage />} />
+          <Route path="/my-projects" element={<MyProjectsPage />} />
           {/* Open to every authenticated role - ProjectPolicy::view allows a plain
               employee onto a project they have (or had) an assignment on, read-only.
               The list at /projects stays admin/manager-only below. */}
