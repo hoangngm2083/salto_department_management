@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { getEmployee } from '../api/employees';
 import { deleteProject, listProjects, updateProject } from '../api/projects';
 import CreateProjectModal from '../components/CreateProjectModal';
 import EmployeeSearchSelect from '../components/EmployeeSearchSelect';
@@ -21,10 +22,29 @@ export default function ProjectsListPage() {
   const { user } = useAuth();
   const isAdmin = user.position === 'admin';
 
-  const [status, setStatus] = useState('all');
+  // Seeded once from the URL (e.g. a dashboard link like
+  // `/projects?status=active` or `?manager_employee_id=5`) so a deep link
+  // lands pre-filtered - the filters themselves stay local state afterwards,
+  // same as every other list page in the app.
+  const [searchParams] = useSearchParams();
+
+  const [status, setStatus] = useState(() => searchParams.get('status') ?? 'all');
   const [search, setSearch] = useState('');
-  const [managerId, setManagerId] = useState(null);
+  const [managerId, setManagerId] = useState(() => {
+    const id = searchParams.get('manager_employee_id');
+
+    return id ? Number(id) : null;
+  });
   const [managerName, setManagerName] = useState(null);
+
+  useEffect(() => {
+    if (managerId && !managerName) {
+      getEmployee(managerId)
+        .then((employee) => setManagerName(employee.name))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const {
     items: projects,

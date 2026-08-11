@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/useAuth';
 import { roleHomePath } from './lib/role-redirect';
 import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
 import MePage from './pages/MePage';
 import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import DepartmentsListPage from './pages/DepartmentsListPage';
@@ -31,6 +32,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
           <Route path="/" element={<HomeRedirect />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/me" element={<MePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
           <Route path="/leave-requests" element={<LeaveRequestsListPage />} />
