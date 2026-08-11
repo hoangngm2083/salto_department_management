@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\GetEmployeesRequest;
+use App\Http\Requests\Employee\GetEmployeeWorkHistoryRequest;
 use App\Http\Requests\Employee\UpsertEmployeeRequest;
 use App\Http\Requests\Task\GetEmployeeTasksRequest;
 use App\Http\Resources\Employee\EmployeeCollection;
@@ -107,10 +108,10 @@ class EmployeeController extends Controller
     /**
      * Display the employee's project/role work history.
      */
-    public function workHistory(Employee $employee): JsonResponse
+    public function workHistory(GetEmployeeWorkHistoryRequest $request, Employee $employee): JsonResponse
     {
         Gate::authorize('view', $employee);
-        $employee = $this->projectAssignmentService->workHistory($employee);
+        $employee = $this->projectAssignmentService->workHistory($employee, $request->boolean('active'));
 
         return $this->successResponse(
             new EmployeeWorkHistoryResource($employee),

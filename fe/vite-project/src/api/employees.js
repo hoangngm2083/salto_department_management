@@ -28,8 +28,8 @@ export async function deleteEmployee(id) {
   await http.delete(`/employees/${id}`);
 }
 
-export async function getEmployeeWorkHistory(id) {
-  const { data } = await http.get(`/employees/${id}/projects`);
+export async function getEmployeeWorkHistory(id, params) {
+  const { data } = await http.get(`/employees/${id}/projects`, { params });
 
   return data.data;
 }

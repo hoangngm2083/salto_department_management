@@ -429,7 +429,33 @@ test('workHistory_employeeWithProjectsAndRoles_returnsNestedHistory', function (
     // Assert
     $response->assertSuccessful()
         ->assertJsonPath('data.employee.id', $employee->id)
+        ->assertJsonPath('data.projects.0.project_id', $project->id)
         ->assertJsonPath('data.projects.0.project', 'ERP')
         ->assertJsonPath('data.projects.0.project_slug', 'erp')
         ->assertJsonPath('data.projects.0.roles.0.role', 'Backend');
+});
+
+test('workHistory_activeFilter_excludesEndedAssignments', function () {
+    // Arrange
+    $employee = Employee::factory()->create();
+    $activeProject = Project::factory()->create(['name' => 'Active Project']);
+    $endedProject = Project::factory()->create(['name' => 'Ended Project']);
+    ProjectAssignment::factory()->create([
+        'project_id' => $activeProject->id,
+        'employee_id' => $employee->id,
+        'end_date' => null,
+    ]);
+    ProjectAssignment::factory()->create([
+        'project_id' => $endedProject->id,
+        'employee_id' => $employee->id,
+        'end_date' => today()->subDay(),
+    ]);
+
+    // Act
+    $response = $this->getJson("/api/employees/{$employee->id}/projects?active=1");
+
+    // Assert
+    $response->assertSuccessful()
+        ->assertJsonCount(1, 'data.projects')
+        ->assertJsonPath('data.projects.0.project', 'Active Project');
 });

@@ -22,8 +22,11 @@ class EmployeeWorkHistoryResource extends JsonResource
                 'current_level' => $this->currentLevel?->name,
             ],
             'projects' => $this->projectAssignments->map(fn ($assignment) => [
+                'project_id' => $assignment->project->id,
                 'project' => $assignment->project->name,
                 'project_slug' => $assignment->project->slug,
+                'project_status' => $assignment->project->status->value,
+                'project_end_date' => $assignment->project->end_date?->toDateString(),
                 'start_date' => $assignment->start_date?->toDateString(),
                 'end_date' => $assignment->end_date?->toDateString(),
                 'status' => $assignment->status->value,

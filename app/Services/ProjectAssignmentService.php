@@ -194,13 +194,15 @@ class ProjectAssignmentService
      * Build the read-model combining an employee's projects and, within
      * each, their role periods over time — current and past.
      */
-    public function workHistory(Employee $employee): Employee
+    public function workHistory(Employee $employee, bool $activeOnly = false): Employee
     {
         return $employee->load([
             'department:id,name',
             'currentLevel:id,name',
-            'projectAssignments' => fn ($query) => $query->orderBy('start_date', 'desc'),
-            'projectAssignments.project:id,name,slug',
+            'projectAssignments' => fn ($query) => $query
+                ->when($activeOnly, fn ($query) => $query->whereNull('end_date'))
+                ->orderBy('start_date', 'desc'),
+            'projectAssignments.project:id,name,slug,status,end_date',
             'projectAssignments.rolePeriods' => fn ($query) => $query->orderBy('start_date', 'desc'),
             'projectAssignments.rolePeriods.projectRole:id,name',
         ]);
