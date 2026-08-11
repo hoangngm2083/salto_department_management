@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom';
-import Header from './Header';
+import Sidebar from './Sidebar';
 import { pushNavHistory } from '../lib/nav-history';
 
 export default function Layout() {
@@ -20,10 +20,12 @@ export default function Layout() {
   }, [location.pathname, navigationType]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      <main className="mx-auto max-w-5xl px-6 py-8">
-        <Outlet />
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="px-6 py-8">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

@@ -1,33 +1,39 @@
-export function roleHomePath(employee) {
-  if (!employee) {
-    return '/login';
-  }
+import {
+  BuildingOfficeIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  FolderIcon,
+  HomeIcon,
+  ListBulletIcon,
+  TagIcon,
+  UserCircleIcon,
+  UsersIcon,
+  ChartBarIcon,
+} from '@heroicons/react/24/outline';
 
-  switch (employee.position) {
-    case 'admin':
-      return '/departments';
-    case 'manager':
-      return employee.department_slug ? `/departments/${employee.department_slug}` : '/me';
-    default:
-      return '/me';
-  }
+/** Every role lands on the dashboard after login now (plan mục 9.1). */
+export function roleHomePath(employee) {
+  return employee ? '/dashboard' : '/login';
 }
 
 const NAV = {
-  departments: { to: '/departments', label: 'Phòng ban' },
-  employees: { to: '/employees', label: 'Nhân viên' },
-  levels: { to: '/levels', label: 'Cấp bậc' },
-  projects: { to: '/projects', label: 'Dự án' },
-  projectRoles: { to: '/project-roles', label: 'Vai trò dự án' },
-  leaveRequests: { to: '/leave-requests', label: 'Đơn nghỉ phép' },
-  taskDelayRequests: { to: '/task-delay-requests', label: 'Yêu cầu gia hạn task' },
-  profile: { to: '/me', label: 'Hồ sơ' },
+  dashboard: { to: '/dashboard', label: 'Trang chủ', icon: HomeIcon },
+  departments: { to: '/departments', label: 'Phòng ban', icon: BuildingOfficeIcon },
+  employees: { to: '/employees', label: 'Nhân viên', icon: UsersIcon },
+  levels: { to: '/levels', label: 'Cấp bậc', icon: ChartBarIcon },
+  projects: { to: '/projects', label: 'Dự án', icon: FolderIcon },
+  projectRoles: { to: '/project-roles', label: 'Vai trò dự án', icon: TagIcon },
+  leaveRequests: { to: '/leave-requests', label: 'Yêu cầu nghỉ phép', icon: CalendarDaysIcon },
+  taskDelayRequests: { to: '/task-delay-requests', label: 'Yêu cầu gia hạn task', icon: ClockIcon },
+  myTasks: { to: '/my-tasks', label: 'Task của tôi', icon: ListBulletIcon },
+  myProjects: { to: '/my-projects', label: 'Dự án', icon: FolderIcon },
+  profile: { to: '/me', label: 'Hồ sơ', icon: UserCircleIcon },
 };
 
 /**
- * @return {{to: string, label: string}[]}
+ * @return {{to: string, label: string, icon: import('react').ComponentType}[]}
  */
-export function headerNavItems(employee) {
+export function sidebarNavItems(employee) {
   if (!employee) {
     return [];
   }
@@ -35,6 +41,7 @@ export function headerNavItems(employee) {
   switch (employee.position) {
     case 'admin':
       return [
+        NAV.dashboard,
         NAV.departments,
         NAV.employees,
         NAV.levels,
@@ -45,7 +52,12 @@ export function headerNavItems(employee) {
       ];
     case 'manager':
       return [
-        { to: roleHomePath(employee), label: 'Phòng ban của tôi' },
+        NAV.dashboard,
+        {
+          to: employee.department_slug ? `/departments/${employee.department_slug}` : '/dashboard',
+          label: 'Phòng ban của tôi',
+          icon: BuildingOfficeIcon,
+        },
         NAV.employees,
         NAV.levels,
         NAV.projects,
@@ -54,6 +66,6 @@ export function headerNavItems(employee) {
         NAV.taskDelayRequests,
       ];
     default:
-      return [NAV.profile, NAV.leaveRequests, NAV.taskDelayRequests];
+      return [NAV.dashboard, NAV.myTasks, NAV.myProjects, NAV.leaveRequests, NAV.taskDelayRequests];
   }
 }
