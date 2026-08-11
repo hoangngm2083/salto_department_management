@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listProjectTasks } from '../api/tasks';
-import { TASK_STATUS_CARD_CLASSES, TASK_STATUS_COLUMNS, TASK_STATUS_LABELS } from '../lib/task-status';
+import { CANCELLED_TITLE_CLASS, TASK_STATUS_CARD_CLASSES, TASK_STATUS_COLUMNS, TASK_STATUS_LABELS } from '../lib/task-status';
 import CreateTaskModal from './CreateTaskModal';
 import TaskDetailModal from './TaskDetailModal';
 
@@ -17,8 +17,12 @@ const BOARD_PAGE_SIZE = 100;
  * PM checks in `TaskPolicy`/`TaskDelayRequestPolicy::update` use, so it
  * doubles as both "may add a task" and the `canReview` passed into the
  * detail modal.
+ *
+ * Takes `slug` directly (known synchronously from the route) rather than a
+ * loaded `project`, so this fetches in parallel with the parent's own
+ * `getProject()` call instead of waiting on it.
  */
-export default function TasksPanel({ project, canManage, onChanged }) {
+export default function TasksPanel({ slug, canManage, onChanged }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -26,7 +30,7 @@ export default function TasksPanel({ project, canManage, onChanged }) {
 
   function load() {
     setLoading(true);
-    listProjectTasks(project.slug, { per_page: BOARD_PAGE_SIZE })
+    listProjectTasks(slug, { per_page: BOARD_PAGE_SIZE })
       .then((res) => setTasks(res.data))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -36,7 +40,7 @@ export default function TasksPanel({ project, canManage, onChanged }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.slug]);
+  }, [slug]);
 
   // done_count/total_count/overdue_count live on the project resource
   // (mục 5), not recomputed here - re-pulling the whole project after any
@@ -75,12 +79,12 @@ export default function TasksPanel({ project, canManage, onChanged }) {
       {!loading && tasks.length === 0 && <p className="py-2 text-sm text-gray-500">Chưa có task nào.</p>}
 
       {!loading && tasks.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 overflow-x-auto sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {TASK_STATUS_COLUMNS.map((status) => {
             const columnTasks = tasks.filter((t) => t.status === status);
 
             return (
-              <div key={status} className="min-w-[200px] rounded-md bg-gray-50 p-2">
+              <div key={status} className="min-w-0 rounded-md bg-gray-50 p-2">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
                     {TASK_STATUS_LABELS[status]}
@@ -99,7 +103,11 @@ export default function TasksPanel({ project, canManage, onChanged }) {
                         onClick={() => setOpenTask(t)}
                         className={`block w-full rounded-md border border-gray-200 p-2 text-left text-xs shadow-sm hover:border-gray-300 ${TASK_STATUS_CARD_CLASSES[status] ?? 'bg-white'}`}
                       >
-                        <p className="font-medium text-gray-900">{t.title}</p>
+                        <p
+                          className={`font-medium text-gray-900 ${t.status === 'cancelled' ? CANCELLED_TITLE_CLASS : ''}`}
+                        >
+                          {t.title}
+                        </p>
                         {t.assignee_name && <p className="mt-1 text-gray-600">{t.assignee_name}</p>}
                         {t.due_date && (
                           <p className={`mt-1 font-medium ${isOverdue ? 'text-red-600' : 'text-gray-500'}`}>
@@ -118,11 +126,17 @@ export default function TasksPanel({ project, canManage, onChanged }) {
       )}
 
       {showCreate && (
-        <CreateTaskModal slug={project.slug} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+        <CreateTaskModal slug={slug} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
       )}
 
       {openTask && (
-        <TaskDetailModal task={openTask} canReview={canManage} onClose={() => setOpenTask(null)} onUpdated={patchTask} />
+        <TaskDetailModal
+          task={openTask}
+          canReview={canManage}
+          slug={slug}
+          onClose={() => setOpenTask(null)}
+          onUpdated={patchTask}
+        />
       )}
     </div>
   );

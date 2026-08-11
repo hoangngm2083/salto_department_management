@@ -1,6 +1,6 @@
 export const MIN_BAR_WIDTH_PERCENT = 2;
 
-function todayIso() {
+export function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -68,4 +68,34 @@ export function getTimelineRange({ boundStart, boundEnd, periods = [] } = {}) {
   const end = boundEnd ?? today;
 
   return { start, end: end < start ? start : end };
+}
+
+/**
+ * Narrows `[overallStart, overallEnd]` to a `months`-wide window centered on
+ * today (clamped into the overall bounds) - the "zoom" presets, used instead
+ * of letting a Timeline scroll horizontally. Shifts the window inward at
+ * either edge rather than clipping it shorter than requested, and falls back
+ * to the untouched overall range when it's already narrower than the ask.
+ */
+export function getZoomedRange(overallStart, overallEnd, months) {
+  const totalDays = diffDays(overallEnd, overallStart);
+  const windowDays = months * 30;
+
+  if (windowDays >= totalDays) {
+    return { start: overallStart, end: overallEnd };
+  }
+
+  const center = clampIso(todayIso(), overallStart, overallEnd);
+  let start = addDaysIso(center, -windowDays / 2);
+  let end = addDaysIso(center, windowDays / 2);
+
+  if (start < overallStart) {
+    start = overallStart;
+    end = addDaysIso(start, windowDays);
+  } else if (end > overallEnd) {
+    end = overallEnd;
+    start = addDaysIso(end, -windowDays);
+  }
+
+  return { start, end };
 }

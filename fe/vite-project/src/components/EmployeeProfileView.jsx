@@ -100,7 +100,7 @@ export default function EmployeeProfileView({ employee, canEdit, onSaved }) {
   }
 
   return (
-    <div className="mx-auto max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="h-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Thông tin nhân viên</h1>
         {canEdit && !editing && (

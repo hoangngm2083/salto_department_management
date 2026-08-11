@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { getTask, updateTaskStatus } from '../api/tasks';
+import { assignTask, getTask, updateTaskStatus } from '../api/tasks';
 import { createTaskComment, listTaskComments } from '../api/taskComments';
 import {
   createTaskDelayRequest,
@@ -9,7 +9,8 @@ import {
 } from '../api/taskDelayRequests';
 import { useAuth } from '../context/useAuth';
 import { DELAY_REQUEST_STATUS_BADGE_CLASSES, DELAY_REQUEST_STATUS_LABELS } from '../lib/task-delay-request-status';
-import { TASK_STATUS_BADGE_CLASSES, TASK_STATUS_LABELS } from '../lib/task-status';
+import { CANCELLED_TITLE_CLASS, TASK_STATUS_BADGE_CLASSES, TASK_STATUS_LABELS } from '../lib/task-status';
+import ProjectMemberSearchSelect from './ProjectMemberSearchSelect';
 
 const TERMINAL_STATUSES = ['done', 'cancelled'];
 
@@ -20,14 +21,20 @@ const TERMINAL_STATUSES = ['done', 'cancelled'];
  * employee profile, no project context so `canReview` stays false - only the
  * assignee's self-service transitions show there). The backend policy is the
  * real gate either way; this only decides which buttons are worth showing.
+ *
+ * `slug` is only available from the `TasksPanel` call site (it has the
+ * project in scope) - that's also the only place `canReview` can be true, so
+ * the assignee editor (project-manager only, per `TaskPolicy::assign`) never
+ * needs to render without it.
  */
-export default function TaskDetailModal({ task, canReview = false, onClose, onUpdated }) {
+export default function TaskDetailModal({ task, canReview = false, slug, onClose, onUpdated }) {
   const { user } = useAuth();
   const [currentTask, setCurrentTask] = useState(task);
   const [comments, setComments] = useState([]);
-  const [loadingComments, setLoadingComments] = useState(true);
   const [delayRequests, setDelayRequests] = useState([]);
-  const [loadingDelayRequests, setLoadingDelayRequests] = useState(true);
+
+  const [editingAssignee, setEditingAssignee] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   const [commentBody, setCommentBody] = useState('');
   const [postingComment, setPostingComment] = useState(false);
@@ -50,6 +57,21 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
   const canReviewTransition = canReview && currentTask.status === 'in_review';
   const canCancel = canReview && !isTerminal;
   const showTransitionNote = canSelfTransition || canReviewTransition || canCancel;
+  const canAssign = canReview && Boolean(slug);
+
+  // Mirrors TaskPolicy::view()/comment(): a plain project member (or a
+  // former, now-inactive PM) is not enough for either - only this project's
+  // *active* PM (canReview), the assignee, or any system-role manager can
+  // read the comment/delay-request thread; only the first two may write to
+  // it. Skips the fetch entirely instead of calling an endpoint that would
+  // just 403.
+  const canViewThread = canReview || isAssignee || user.position === 'manager';
+  const canPostComment = canReview || isAssignee;
+
+  // Lazily seeded from canViewThread so a viewer without access never shows
+  // a "loading" flash for a fetch that will never be made.
+  const [loadingComments, setLoadingComments] = useState(canViewThread);
+  const [loadingDelayRequests, setLoadingDelayRequests] = useState(canViewThread);
 
   function loadComments() {
     setLoadingComments(true);
@@ -68,11 +90,15 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
   }
 
   useEffect(() => {
+    if (!canViewThread) {
+      return;
+    }
+
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
     loadComments();
     loadDelayRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTask.id]);
+  }, [currentTask.id, canViewThread]);
 
   function applyUpdatedTask(updated) {
     setCurrentTask(updated);
@@ -84,6 +110,20 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
       applyUpdatedTask(await getTask(currentTask.id));
     } catch {
       // http.js interceptor already shows a toast for the error
+    }
+  }
+
+  async function handleAssign(employeeId) {
+    setAssigning(true);
+
+    try {
+      applyUpdatedTask(await assignTask(currentTask.id, { assigned_to: employeeId }));
+      toast.success(employeeId ? 'Đã gán task.' : 'Đã bỏ gán task.');
+      setEditingAssignee(false);
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setAssigning(false);
     }
   }
 
@@ -199,7 +239,11 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
       >
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">{currentTask.title}</h2>
+            <h2
+              className={`text-lg font-semibold text-gray-900 ${currentTask.status === 'cancelled' ? CANCELLED_TITLE_CLASS : ''}`}
+            >
+              {currentTask.title}
+            </h2>
             {currentTask.project_name && <p className="text-xs text-gray-500">{currentTask.project_name}</p>}
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Đóng">
@@ -213,10 +257,42 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
           >
             {TASK_STATUS_LABELS[currentTask.status] ?? currentTask.status}
           </span>
-          {currentTask.assignee_name && (
-            <span className="text-xs">
+          {(currentTask.assignee_name || canAssign) && !editingAssignee && (
+            <span className="flex items-center gap-1 text-xs">
               <span className="text-gray-400">Giao cho: </span>
-              <span className="font-medium text-gray-700">{currentTask.assignee_name}</span>
+              <span className="font-medium text-gray-700">{currentTask.assignee_name ?? 'Chưa giao'}</span>
+              {canAssign && (
+                <button
+                  type="button"
+                  onClick={() => setEditingAssignee(true)}
+                  disabled={assigning}
+                  className="text-gray-400 underline decoration-dotted hover:text-gray-600"
+                >
+                  Đổi
+                </button>
+              )}
+            </span>
+          )}
+          {canAssign && editingAssignee && (
+            <span className="flex items-center gap-1 text-xs">
+              <span className="text-gray-400">Giao cho: </span>
+              <span className="w-52">
+                <ProjectMemberSearchSelect
+                  slug={slug}
+                  value={currentTask.assigned_to}
+                  valueLabel={currentTask.assignee_name}
+                  onChange={(id) => handleAssign(id)}
+                />
+              </span>
+              <button
+                type="button"
+                onClick={() => setEditingAssignee(false)}
+                disabled={assigning}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Hủy"
+              >
+                &times;
+              </button>
             </span>
           )}
           {currentTask.due_date && (
@@ -310,13 +386,17 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
         <div className="mb-6 rounded-md border border-gray-200 p-3">
           <h3 className="mb-2 text-sm font-medium text-gray-900">Yêu cầu gia hạn</h3>
 
-          {loadingDelayRequests && <p className="text-xs text-gray-500">Đang tải...</p>}
+          {!canViewThread && (
+            <p className="text-xs text-gray-400">Bạn không có quyền xem yêu cầu gia hạn của task này.</p>
+          )}
 
-          {!loadingDelayRequests && delayRequests.length === 0 && (
+          {canViewThread && loadingDelayRequests && <p className="text-xs text-gray-500">Đang tải...</p>}
+
+          {canViewThread && !loadingDelayRequests && delayRequests.length === 0 && (
             <p className="text-xs text-gray-500">Chưa có yêu cầu gia hạn nào.</p>
           )}
 
-          {!loadingDelayRequests && delayRequests.length > 0 && (
+          {canViewThread && !loadingDelayRequests && delayRequests.length > 0 && (
             <ul className="space-y-2">
               {delayRequests.map((delayRequest) => (
                 <li key={delayRequest.id} className="flex flex-wrap items-center gap-2 text-xs">
@@ -419,13 +499,17 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
         <div>
           <h3 className="mb-2 text-sm font-medium text-gray-900">Bình luận</h3>
 
-          {loadingComments && <p className="text-xs text-gray-500">Đang tải...</p>}
+          {!canViewThread && (
+            <p className="text-xs text-gray-400">Bạn không có quyền xem bình luận của task này.</p>
+          )}
 
-          {!loadingComments && comments.length === 0 && (
+          {canViewThread && loadingComments && <p className="text-xs text-gray-500">Đang tải...</p>}
+
+          {canViewThread && !loadingComments && comments.length === 0 && (
             <p className="mb-3 text-xs text-gray-500">Chưa có bình luận nào.</p>
           )}
 
-          {!loadingComments && comments.length > 0 && (
+          {canViewThread && !loadingComments && comments.length > 0 && (
             <ul className="mb-3 space-y-2">
               {comments.map((comment) => (
                 <li key={comment.id} className="rounded-md bg-gray-50 p-2 text-xs">
@@ -439,23 +523,25 @@ export default function TaskDetailModal({ task, canReview = false, onClose, onUp
             </ul>
           )}
 
-          <form onSubmit={handlePostComment} className="flex gap-2">
-            <input
-              type="text"
-              value={commentBody}
-              onChange={(e) => setCommentBody(e.target.value)}
-              placeholder="Viết bình luận..."
-              maxLength={2000}
-              className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-            />
-            <button
-              type="submit"
-              disabled={postingComment || !commentBody.trim()}
-              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
-            >
-              Gửi
-            </button>
-          </form>
+          {canPostComment && (
+            <form onSubmit={handlePostComment} className="flex gap-2">
+              <input
+                type="text"
+                value={commentBody}
+                onChange={(e) => setCommentBody(e.target.value)}
+                placeholder="Viết bình luận..."
+                maxLength={2000}
+                className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={postingComment || !commentBody.trim()}
+                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
+              >
+                Gửi
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

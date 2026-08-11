@@ -1,4 +1,4 @@
-import { clampIso, diffDays, getTimelineTicks, MIN_BAR_WIDTH_PERCENT } from '../lib/timeline';
+import { clampIso, diffDays, getTimelineTicks, MIN_BAR_WIDTH_PERCENT, todayIso } from '../lib/timeline';
 
 /**
  * Gantt-style timeline building blocks, generic over any "row has a
@@ -21,7 +21,10 @@ export function TimelineHeader({ rangeStart, rangeEnd }) {
 
         return (
           <span
-            key={tick.date}
+            // Index, not tick.date: a narrow zoomed window can round two
+            // adjacent ticks to the same calendar date, which duplicated
+            // this key when it was tick.date.
+            key={i}
             className={`absolute top-0 whitespace-nowrap ${alignClass}`}
             style={{ left: `${tick.percent}%` }}
           >
@@ -44,8 +47,8 @@ export function TimelineGridLines({ rangeStart, rangeEnd }) {
 
   return (
     <div className="pointer-events-none absolute inset-0">
-      {ticks.map((tick) => (
-        <div key={tick.date} className="absolute inset-y-0 w-px bg-gray-100" style={{ left: `${tick.percent}%` }} />
+      {ticks.map((tick, i) => (
+        <div key={i} className="absolute inset-y-0 w-px bg-gray-100" style={{ left: `${tick.percent}%` }} />
       ))}
     </div>
   );
@@ -53,7 +56,10 @@ export function TimelineGridLines({ rangeStart, rangeEnd }) {
 
 /**
  * Single row's bar: gray once the row has ended (`endDate` set), blue while
- * still ongoing (`endDate` null).
+ * still ongoing (`endDate` null). An ongoing row's bar stops at today, not at
+ * `rangeEnd` - `rangeEnd` can sit in the future (e.g. a project's planned end
+ * date), and filling all the way to it would draw activity that hasn't
+ * happened yet.
  */
 export function TimelineBar({ rangeStart, rangeEnd, startDate, endDate }) {
   if (!startDate) {
@@ -64,7 +70,7 @@ export function TimelineBar({ rangeStart, rangeEnd, startDate, endDate }) {
   const isActive = !endDate;
 
   const clampedStart = clampIso(startDate, rangeStart, rangeEnd);
-  const clampedEnd = clampIso(isActive ? rangeEnd : endDate, rangeStart, rangeEnd);
+  const clampedEnd = clampIso(isActive ? todayIso() : endDate, rangeStart, rangeEnd);
 
   const leftPercent = (diffDays(clampedStart, rangeStart) / totalDays) * 100;
   const widthPercent = Math.max(
@@ -82,33 +88,68 @@ export function TimelineBar({ rangeStart, rangeEnd, startDate, endDate }) {
 }
 
 /**
- * Two-region scroll shell: a table wrapper that scrolls horizontally as one
- * piece when its content (the fixed-width left column plus the timeline)
- * doesn't fit. `dimmed` mirrors a "refreshing" state some list hooks expose.
+ * Two-region shell: a fixed-width left column plus the timeline, always
+ * filling 100% of its container - the bars are already percentage-based, so
+ * nothing needs a minimum pixel width (previously forced one, which is what
+ * caused the horizontal scrollbar this is meant to avoid; use
+ * `TimelineZoomControls` instead to see a narrower date window). `dimmed`
+ * mirrors a "refreshing" state some list hooks expose.
  */
-export function TimelineTable({ children, dimmed = false, minWidthClassName = 'min-w-[640px]' }) {
+export function TimelineTable({ children, dimmed = false }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-gray-200">
-      <div className={`${minWidthClassName} transition-opacity duration-150 ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
-        {children}
-      </div>
+    <div className="rounded-md border border-gray-200">
+      <div className={`transition-opacity duration-150 ${dimmed ? 'opacity-50' : 'opacity-100'}`}>{children}</div>
+    </div>
+  );
+}
+
+const ZOOM_PRESETS = [
+  { value: null, label: 'Toàn bộ' },
+  { value: 6, label: '6 tháng' },
+  { value: 3, label: '3 tháng' },
+  { value: 1, label: '1 tháng' },
+];
+
+/**
+ * Preset zoom buttons for a Timeline - narrows the displayed date window
+ * instead of letting the timeline scroll horizontally. `value` is `null`
+ * (full range) or a number of months; pair with `getZoomedRange` in
+ * `lib/timeline` to compute the actual window to render.
+ */
+export function TimelineZoomControls({ value, onChange }) {
+  return (
+    <div className="inline-flex rounded-md border border-gray-200 p-0.5 text-xs">
+      {ZOOM_PRESETS.map((preset) => (
+        <button
+          key={preset.label}
+          type="button"
+          onClick={() => onChange(preset.value)}
+          className={`rounded px-2 py-1 font-medium ${
+            value === preset.value ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          {preset.label}
+        </button>
+      ))}
     </div>
   );
 }
 
 /**
- * Header for a `TimelineTable`: a pinned label over the left column and the
- * date ticks over the timeline column, both scrolling as one unit.
+ * Header for a `TimelineTable`: a label over the left column and the date
+ * ticks over the timeline column. The left column takes up 3/10 of the
+ * table's width (`w-[30%]`, vs. the timeline's 7/10) so row content (name,
+ * status, role tags) has more room than the old fixed `w-40 sm:w-48`.
  */
-export function TimelineTableHeader({ label, rangeStart, rangeEnd, columnClassName = 'w-56' }) {
+export function TimelineTableHeader({ label, rangeStart, rangeEnd, columnClassName = 'w-[30%]' }) {
   return (
     <div className="flex items-center border-b border-gray-200 bg-gray-50">
       <div
-        className={`sticky left-0 z-10 shrink-0 border-r border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold tracking-wide text-gray-500 uppercase ${columnClassName}`}
+        className={`shrink-0 border-r border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold tracking-wide text-gray-500 uppercase ${columnClassName}`}
       >
         {label}
       </div>
-      <div className="flex-1 px-3 py-2">
+      <div className="flex-1 px-3 py-1.5">
         <TimelineHeader rangeStart={rangeStart} rangeEnd={rangeEnd} />
       </div>
     </div>
@@ -117,15 +158,14 @@ export function TimelineTableHeader({ label, rangeStart, rangeEnd, columnClassNa
 
 /**
  * One row of a `TimelineTable`: arbitrary content (name, badges, actions...)
- * in a column pinned via `sticky left-0` - so it never scrolls away with the
- * timeline even though both share one scroll container - next to that row's
- * bar. Flexbox stretches both to the same height automatically, so the two
- * regions always stay row-synced regardless of how tall `children` gets.
+ * in a fixed-width left column next to that row's bar. Flexbox stretches
+ * both to the same height automatically, so the two regions always stay
+ * row-synced regardless of how tall `children` gets.
  */
-export function TimelineRow({ children, rangeStart, rangeEnd, startDate, endDate, columnClassName = 'w-56' }) {
+export function TimelineRow({ children, rangeStart, rangeEnd, startDate, endDate, columnClassName = 'w-[30%]' }) {
   return (
     <li className="flex">
-      <div className={`sticky left-0 z-10 shrink-0 border-r border-gray-200 bg-white px-3 py-3 ${columnClassName}`}>
+      <div className={`shrink-0 border-r border-gray-200 bg-white px-3 py-2 ${columnClassName}`}>
         {children}
       </div>
 

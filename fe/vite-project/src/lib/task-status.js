@@ -29,3 +29,6 @@ export const TASK_STATUS_CARD_CLASSES = {
 
 /** Column order for the Kanban board. */
 export const TASK_STATUS_COLUMNS = ['todo', 'in_progress', 'in_review', 'done', 'cancelled'];
+
+/** Applied to a cancelled task's title wherever it's rendered - a light strikethrough only. */
+export const CANCELLED_TITLE_CLASS = 'line-through decoration-red-400';

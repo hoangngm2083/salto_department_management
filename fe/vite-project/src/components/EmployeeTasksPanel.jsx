@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getEmployeeTasks } from '../api/employees';
 import useCursorList from '../hooks/useCursorList';
-import { TASK_STATUS_BADGE_CLASSES, TASK_STATUS_LABELS } from '../lib/task-status';
+import { CANCELLED_TITLE_CLASS, TASK_STATUS_BADGE_CLASSES, TASK_STATUS_LABELS } from '../lib/task-status';
 import Pager from './Pager';
 import TaskDetailModal from './TaskDetailModal';
 
@@ -36,7 +36,7 @@ export default function EmployeeTasksPanel({ employeeId }) {
   }
 
   return (
-    <div className="mx-auto mt-6 max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="h-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Task được giao</h2>
 
       {loading && <p className="text-sm text-gray-500">Đang tải...</p>}
@@ -58,7 +58,11 @@ export default function EmployeeTasksPanel({ employeeId }) {
                   className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm hover:bg-gray-50"
                 >
                   <div>
-                    <p className="font-medium text-gray-900">{task.title}</p>
+                    <p
+                      className={`font-medium text-gray-900 ${task.status === 'cancelled' ? CANCELLED_TITLE_CLASS : ''}`}
+                    >
+                      {task.title}
+                    </p>
                     {task.project_name && <p className="text-xs text-gray-500">{task.project_name}</p>}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">

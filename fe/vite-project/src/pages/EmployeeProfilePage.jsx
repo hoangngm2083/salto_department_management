@@ -65,9 +65,15 @@ export default function EmployeeProfilePage() {
           &larr; Trang trước
         </BackLink>
       )}
-      <EmployeeProfileView employee={employee} canEdit={canEdit} onSaved={setEmployee} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <div className="lg:col-span-4">
+          <EmployeeProfileView employee={employee} canEdit={canEdit} onSaved={setEmployee} />
+        </div>
+        <div className="lg:col-span-6">
+          <EmployeeTasksPanel employeeId={employee.id} />
+        </div>
+      </div>
       <WorkHistoryPanel employeeId={employee.id} />
-      <EmployeeTasksPanel employeeId={employee.id} />
     </div>
   );
 }

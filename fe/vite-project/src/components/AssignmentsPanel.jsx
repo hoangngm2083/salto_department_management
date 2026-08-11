@@ -9,11 +9,11 @@ import {
 } from '../api/projectAssignments';
 import { listProjectRoles } from '../api/projectRoles';
 import useCursorList from '../hooks/useCursorList';
-import { getTimelineRange } from '../lib/timeline';
+import { getTimelineRange, getZoomedRange } from '../lib/timeline';
 import EmployeeMultiSelect from './EmployeeMultiSelect';
 import Pager from './Pager';
 import ProjectRoleMultiSelect from './ProjectRoleMultiSelect';
-import { TimelineRow, TimelineTable, TimelineTableHeader } from './Timeline';
+import { TimelineRow, TimelineTable, TimelineTableHeader, TimelineZoomControls } from './Timeline';
 
 /**
  * "Members" tab of a project's detail page: every assignment (active and
@@ -21,19 +21,30 @@ import { TimelineRow, TimelineTable, TimelineTableHeader } from './Timeline';
  * currently held. Ending an assignment or a role period is immediate
  * (today) - unlike project managers there's no "must always have >= 1
  * active role" invariant, so ending the last role is allowed.
+ *
+ * Takes `slug` directly (known synchronously from the route) rather than
+ * waiting on `project` so it fetches in parallel with the parent's own
+ * `getProject()` call - `project` is only used for the timeline's optional
+ * start/end bounds, and is `null` on the first render.
  */
-export default function AssignmentsPanel({ project, canManage }) {
+export default function AssignmentsPanel({ slug, project, canManage }) {
   const { items: assignments, meta, loading, refreshing, goToNext, goToPrev, refresh } =
     useCursorList({
-      fetcher: (params) => listProjectAssignments(project.slug, params),
+      fetcher: (params) => listProjectAssignments(slug, params),
       params: {},
     });
 
-  const { start: rangeStart, end: rangeEnd } = getTimelineRange({
-    boundStart: project.start_date,
-    boundEnd: project.end_date,
+  const { start: overallStart, end: overallEnd } = getTimelineRange({
+    boundStart: project?.start_date,
+    boundEnd: project?.end_date,
     periods: assignments,
   });
+
+  const [zoomMonths, setZoomMonths] = useState(null);
+
+  const { start: rangeStart, end: rangeEnd } = zoomMonths
+    ? getZoomedRange(overallStart, overallEnd, zoomMonths)
+    : { start: overallStart, end: overallEnd };
 
   const [showAdd, setShowAdd] = useState(false);
   const [newEmployees, setNewEmployees] = useState([]);
@@ -58,7 +69,7 @@ export default function AssignmentsPanel({ project, canManage }) {
     setAdding(true);
 
     try {
-      await createProjectAssignment(project.slug, {
+      await createProjectAssignment(slug, {
         employee_ids: newEmployees.map((employee) => employee.id),
         role_ids: newRoleIds,
         start_date: newStartDate || undefined,
@@ -87,7 +98,7 @@ export default function AssignmentsPanel({ project, canManage }) {
     setEndingId(assignment.id);
 
     try {
-      await endProjectAssignment(project.slug, assignment.id);
+      await endProjectAssignment(slug, assignment.id);
       toast.success('Đã kết thúc sự tham gia của thành viên.');
       refresh();
     } catch {
@@ -103,7 +114,7 @@ export default function AssignmentsPanel({ project, canManage }) {
     }
 
     try {
-      await endAssignmentRole(project.slug, assignment.id, rolePeriod.id);
+      await endAssignmentRole(slug, assignment.id, rolePeriod.id);
       toast.success('Đã kết thúc vai trò.');
       refresh();
     } catch {
@@ -112,7 +123,7 @@ export default function AssignmentsPanel({ project, canManage }) {
   }
 
   async function handleAddRole(assignment, roleId) {
-    await addAssignmentRole(project.slug, assignment.id, roleId);
+    await addAssignmentRole(slug, assignment.id, roleId);
     toast.success('Đã thêm vai trò.');
     refresh();
   }
@@ -120,7 +131,10 @@ export default function AssignmentsPanel({ project, canManage }) {
   return (
     <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-medium text-gray-900">Thành viên dự án</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-medium text-gray-900">Thành viên dự án</h2>
+          {assignments.length > 0 && <TimelineZoomControls value={zoomMonths} onChange={setZoomMonths} />}
+        </div>
         {canManage && !showAdd && (
           <button
             type="button"
@@ -273,7 +287,7 @@ function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, on
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
         {activeRolePeriods.map((period) => (
           <span
             key={period.id}
