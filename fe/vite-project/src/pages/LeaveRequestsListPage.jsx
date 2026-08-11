@@ -6,20 +6,16 @@ import { LEAVE_STATUS_BADGE_CLASSES, LEAVE_STATUS_LABELS } from '../lib/leave-re
 import useCursorList from '../hooks/useCursorList';
 import CreateLeaveRequestModal from '../components/CreateLeaveRequestModal';
 import Pager from '../components/Pager';
+import StatusDropdown from '../components/StatusDropdown';
 
 const STATUS_TOAST_MESSAGES = {
-  pending: 'Đã chuyển đơn về trạng thái chờ duyệt.',
-  approved: 'Đã duyệt đơn nghỉ phép.',
-  rejected: 'Đã từ chối đơn nghỉ phép.',
-  cancelled: 'Đã hủy đơn nghỉ phép.',
+  pending: 'Đã chuyển yêu cầu về trạng thái chờ duyệt.',
+  approved: 'Đã duyệt yêu cầu nghỉ phép.',
+  rejected: 'Đã từ chối yêu cầu nghỉ phép.',
+  cancelled: 'Đã hủy yêu cầu nghỉ phép.',
 };
 
-const ADMIN_STATUS_ACTIONS = [
-  { status: 'pending', label: 'Chờ duyệt', className: 'border-yellow-200 text-yellow-700 hover:bg-yellow-50' },
-  { status: 'approved', label: 'Duyệt', className: 'border-green-200 text-green-700 hover:bg-green-50' },
-  { status: 'rejected', label: 'Từ chối', className: 'border-red-200 text-red-600 hover:bg-red-50' },
-  { status: 'cancelled', label: 'Hủy đơn', className: 'border-gray-300 text-gray-700 hover:bg-gray-100' },
-];
+const ALL_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'];
 
 export default function LeaveRequestsListPage() {
   const { user } = useAuth();
@@ -46,10 +42,6 @@ export default function LeaveRequestsListPage() {
   });
 
   async function handleUpdateStatus(leaveRequest, nextStatus) {
-    if (nextStatus === 'cancelled' && !window.confirm('Hủy đơn nghỉ phép này?')) {
-      return;
-    }
-
     setActingId(leaveRequest.id);
 
     try {
@@ -63,16 +55,46 @@ export default function LeaveRequestsListPage() {
     }
   }
 
+  /**
+   * Which statuses `request` may be moved to by the current actor - admin
+   * may move a request between any two statuses; a manager may only
+   * approve/reject their own department's still-pending requests; the
+   * request's own employee may only cancel their own still-pending one.
+   * Feeds `StatusDropdown`, which also covers the "no options" (read-only
+   * badge) case.
+   */
+  function getAvailableStatuses(request) {
+    if (isAdmin) {
+      return ALL_STATUSES.filter((value) => value !== request.status);
+    }
+
+    if (request.status !== 'pending') {
+      return [];
+    }
+
+    const options = [];
+
+    if (canReview) {
+      options.push('approved', 'rejected');
+    }
+
+    if (request.employee_id === user.id) {
+      options.push('cancelled');
+    }
+
+    return options;
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Đơn nghỉ phép</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Yêu cầu nghỉ phép</h1>
         <button
           type="button"
           onClick={() => setShowCreate(true)}
           className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
         >
-          Tạo đơn nghỉ phép
+          Tạo yêu cầu nghỉ phép
         </button>
       </div>
 
@@ -100,7 +122,6 @@ export default function LeaveRequestsListPage() {
               <th className="px-4 py-2 font-medium">Đến ngày</th>
               <th className="px-4 py-2 font-medium">Lý do</th>
               <th className="px-4 py-2 font-medium">Trạng thái</th>
-              <th className="px-4 py-2 font-medium">Hành động</th>
             </tr>
           </thead>
           <tbody
@@ -108,7 +129,7 @@ export default function LeaveRequestsListPage() {
           >
             {loading && (
               <tr>
-                <td colSpan={canReview ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={canReview ? 5 : 4} className="px-4 py-6 text-center text-gray-500">
                   Đang tải...
                 </td>
               </tr>
@@ -116,8 +137,8 @@ export default function LeaveRequestsListPage() {
 
             {!loading && requests.length === 0 && (
               <tr>
-                <td colSpan={canReview ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
-                  Không có đơn nghỉ phép nào.
+                <td colSpan={canReview ? 5 : 4} className="px-4 py-6 text-center text-gray-500">
+                  Không có yêu cầu nghỉ phép nào.
                 </td>
               </tr>
             )}
@@ -135,62 +156,14 @@ export default function LeaveRequestsListPage() {
                   <td className="px-4 py-2 text-gray-500">{request.end_date}</td>
                   <td className="px-4 py-2 text-gray-500">{request.reason}</td>
                   <td className="px-4 py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${LEAVE_STATUS_BADGE_CLASSES[request.status] ?? 'bg-gray-100 text-gray-700'}`}
-                    >
-                      {LEAVE_STATUS_LABELS[request.status] ?? request.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      {isAdmin &&
-                        ADMIN_STATUS_ACTIONS.filter((action) => action.status !== request.status).map((action) => (
-                          <button
-                            key={action.status}
-                            type="button"
-                            onClick={() => handleUpdateStatus(request, action.status)}
-                            disabled={actingId === request.id}
-                            className={`rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50 ${action.className}`}
-                          >
-                            {action.label}
-                          </button>
-                        ))}
-
-                      {!isAdmin && request.status === 'pending' && (
-                        <>
-                          {canReview && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateStatus(request, 'approved')}
-                                disabled={actingId === request.id}
-                                className="rounded-md border border-green-200 px-2 py-1 text-xs font-medium text-green-700 disabled:opacity-50 hover:bg-green-50"
-                              >
-                                Duyệt
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateStatus(request, 'rejected')}
-                                disabled={actingId === request.id}
-                                className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
-                              >
-                                Từ chối
-                              </button>
-                            </>
-                          )}
-                          {request.employee_id === user.id && (
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateStatus(request, 'cancelled')}
-                              disabled={actingId === request.id}
-                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
-                            >
-                              Hủy đơn
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
+                    <StatusDropdown
+                      status={request.status}
+                      statusLabels={LEAVE_STATUS_LABELS}
+                      statusBadgeClasses={LEAVE_STATUS_BADGE_CLASSES}
+                      options={getAvailableStatuses(request)}
+                      busy={actingId === request.id}
+                      onSelect={(nextStatus) => handleUpdateStatus(request, nextStatus)}
+                    />
                   </td>
                 </tr>
               ))}

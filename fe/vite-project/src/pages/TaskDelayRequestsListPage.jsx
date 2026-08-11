@@ -5,6 +5,7 @@ import { useAuth } from '../context/useAuth';
 import { DELAY_REQUEST_STATUS_BADGE_CLASSES, DELAY_REQUEST_STATUS_LABELS } from '../lib/task-delay-request-status';
 import useCursorList from '../hooks/useCursorList';
 import Pager from '../components/Pager';
+import StatusDropdown from '../components/StatusDropdown';
 
 const STATUS_TOAST_MESSAGES = {
   approved: 'Đã duyệt yêu cầu gia hạn.',
@@ -14,11 +15,7 @@ const STATUS_TOAST_MESSAGES = {
 
 // UpdateTaskDelayRequestStatusRequest only allows approved/rejected/cancelled
 // (no reverting to pending), unlike leave-requests.
-const ADMIN_STATUS_ACTIONS = [
-  { status: 'approved', label: 'Duyệt', className: 'border-green-200 text-green-700 hover:bg-green-50' },
-  { status: 'rejected', label: 'Từ chối', className: 'border-red-200 text-red-600 hover:bg-red-50' },
-  { status: 'cancelled', label: 'Hủy', className: 'border-gray-300 text-gray-700 hover:bg-gray-100' },
-];
+const ADMIN_ACTIONABLE_STATUSES = ['approved', 'rejected', 'cancelled'];
 
 /**
  * Flat top-level list, mirroring LeaveRequestsListPage (mục 5: "giống hệt
@@ -54,10 +51,6 @@ export default function TaskDelayRequestsListPage() {
   });
 
   async function handleUpdateStatus(delayRequest, nextStatus) {
-    if (nextStatus === 'cancelled' && !window.confirm('Hủy yêu cầu gia hạn này?')) {
-      return;
-    }
-
     setActingId(delayRequest.id);
 
     try {
@@ -69,6 +62,29 @@ export default function TaskDelayRequestsListPage() {
     } finally {
       setActingId(null);
     }
+  }
+
+  /**
+   * Which statuses `request` may be moved to by the current actor - only
+   * ever non-empty while still pending. Admin may approve/reject/cancel any
+   * request; the requester may only cancel their own. A manager reviews
+   * their own project's requests from the task's detail modal instead (see
+   * the module docblock), so they get no options here even if `canReview`.
+   */
+  function getAvailableStatuses(request) {
+    if (request.status !== 'pending') {
+      return [];
+    }
+
+    if (isAdmin) {
+      return ADMIN_ACTIONABLE_STATUSES;
+    }
+
+    if (request.requested_by === user.id) {
+      return ['cancelled'];
+    }
+
+    return [];
   }
 
   return (
@@ -102,7 +118,6 @@ export default function TaskDelayRequestsListPage() {
               <th className="px-4 py-2 font-medium">Hạn muốn dời</th>
               <th className="px-4 py-2 font-medium">Lý do</th>
               <th className="px-4 py-2 font-medium">Trạng thái</th>
-              <th className="px-4 py-2 font-medium">Hành động</th>
             </tr>
           </thead>
           <tbody
@@ -110,7 +125,7 @@ export default function TaskDelayRequestsListPage() {
           >
             {loading && (
               <tr>
-                <td colSpan={canReview ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={canReview ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
                   Đang tải...
                 </td>
               </tr>
@@ -118,7 +133,7 @@ export default function TaskDelayRequestsListPage() {
 
             {!loading && requests.length === 0 && (
               <tr>
-                <td colSpan={canReview ? 7 : 6} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={canReview ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
                   Không có yêu cầu gia hạn nào.
                 </td>
               </tr>
@@ -133,40 +148,14 @@ export default function TaskDelayRequestsListPage() {
                   <td className="px-4 py-2 text-gray-500">{request.requested_due_date}</td>
                   <td className="px-4 py-2 text-gray-500">{request.reason}</td>
                   <td className="px-4 py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_REQUEST_STATUS_BADGE_CLASSES[request.status] ?? 'bg-gray-100 text-gray-700'}`}
-                    >
-                      {DELAY_REQUEST_STATUS_LABELS[request.status] ?? request.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    {request.status === 'pending' && (
-                      <div className="flex gap-2">
-                        {isAdmin &&
-                          ADMIN_STATUS_ACTIONS.map((action) => (
-                            <button
-                              key={action.status}
-                              type="button"
-                              onClick={() => handleUpdateStatus(request, action.status)}
-                              disabled={actingId === request.id}
-                              className={`rounded-md border px-2 py-1 text-xs font-medium disabled:opacity-50 ${action.className}`}
-                            >
-                              {action.label}
-                            </button>
-                          ))}
-
-                        {!isAdmin && request.requested_by === user.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateStatus(request, 'cancelled')}
-                            disabled={actingId === request.id}
-                            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
-                          >
-                            Hủy
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <StatusDropdown
+                      status={request.status}
+                      statusLabels={DELAY_REQUEST_STATUS_LABELS}
+                      statusBadgeClasses={DELAY_REQUEST_STATUS_BADGE_CLASSES}
+                      options={getAvailableStatuses(request)}
+                      busy={actingId === request.id}
+                      onSelect={(nextStatus) => handleUpdateStatus(request, nextStatus)}
+                    />
                   </td>
                 </tr>
               ))}

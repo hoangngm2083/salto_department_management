@@ -12,7 +12,7 @@ export default function CreateLeaveRequestModal({ onClose, onCreated }) {
 
     try {
       const created = await createLeaveRequest(form);
-      toast.success('Gửi đơn nghỉ phép thành công.');
+      toast.success('Gửi yêu cầu nghỉ phép thành công.');
       onCreated?.(created);
       onClose();
     } catch {
@@ -29,7 +29,7 @@ export default function CreateLeaveRequestModal({ onClose, onCreated }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Tạo đơn nghỉ phép</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Tạo yêu cầu nghỉ phép</h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Đóng">
             &times;
           </button>
@@ -83,7 +83,7 @@ export default function CreateLeaveRequestModal({ onClose, onCreated }) {
               disabled={submitting}
               className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
             >
-              {submitting ? 'Đang gửi...' : 'Gửi đơn'}
+              {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
             </button>
           </div>
         </form>

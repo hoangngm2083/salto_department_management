@@ -9,7 +9,7 @@ function NotificationText({ notification }) {
   if (type === 'LeaveRequestSubmitted') {
     return (
       <span className="text-gray-700">
-        <strong className="font-medium text-gray-900">{data.employee_name}</strong> vừa gửi đơn nghỉ phép từ{' '}
+        <strong className="font-medium text-gray-900">{data.employee_name}</strong> vừa gửi yêu cầu nghỉ phép từ{' '}
         {data.start_date} đến {data.end_date}.
       </span>
     );
@@ -20,7 +20,7 @@ function NotificationText({ notification }) {
 
     return (
       <span className="text-gray-700">
-        Đơn nghỉ phép của bạn đã <strong className="font-medium text-gray-900">{statusLabel}</strong> bởi{' '}
+        Yêu cầu nghỉ phép của bạn đã <strong className="font-medium text-gray-900">{statusLabel}</strong> bởi{' '}
         {data.reviewed_by}.
       </span>
     );
@@ -49,7 +49,23 @@ export default function NotificationBell() {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, POLL_INTERVAL_MS);
 
-    return () => clearInterval(interval);
+    // Background tabs get throttled by the browser, so a fixed interval alone
+    // can leave the badge stale well past POLL_INTERVAL_MS. Refetch as soon as
+    // the tab regains focus/visibility to close that gap.
+    function handleVisibilityOrFocus() {
+      if (document.visibilityState === 'visible') {
+        fetchNotifications();
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
   }, []);
 
   useEffect(() => {
