@@ -7,6 +7,8 @@ import { useAuth } from '../context/useAuth';
 import BackLink from '../components/BackLink';
 import Pager from '../components/Pager';
 import { DEPARTMENT_STATUS_OPTIONS } from '../lib/department-status';
+import { EMPLOYEE_STATUS_OPTIONS } from '../lib/employee-status';
+import { ROLE_LABELS } from '../lib/role-labels';
 import useCursorList from '../hooks/useCursorList';
 
 /** Overrides VITE_PAGE_SIZE: this table is a section of a detail page, not the page itself. */
@@ -240,7 +242,9 @@ export default function DepartmentDetailPage() {
               <th className="px-4 py-2 font-medium">Tên</th>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Vai trò</th>
-              <th className="px-4 py-2 font-medium">Hành động</th>
+              <th className="px-4 py-2 font-medium">Cấp bậc</th>
+              <th className="px-4 py-2 font-medium">Trạng thái</th>
+              {canDelete && <th className="px-4 py-2 font-medium">Hành động</th>}
             </tr>
           </thead>
           <tbody
@@ -248,7 +252,7 @@ export default function DepartmentDetailPage() {
           >
             {loading && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={canDelete ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
                   Đang tải...
                 </td>
               </tr>
@@ -256,7 +260,7 @@ export default function DepartmentDetailPage() {
 
             {!loading && employees.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                <td colSpan={canDelete ? 6 : 5} className="px-4 py-6 text-center text-gray-500">
                   Không có nhân viên nào.
                 </td>
               </tr>
@@ -265,29 +269,36 @@ export default function DepartmentDetailPage() {
             {!loading &&
               employees.map((employee) => (
                 <tr key={employee.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-2">{employee.name}</td>
-                  <td className="px-4 py-2 text-gray-500">{employee.email}</td>
-                  <td className="px-4 py-2">{employee.position}</td>
                   <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      <Link
-                        to={`/employees/${employee.id}`}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                      >
-                        Xem chi tiết
-                      </Link>
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(employee)}
-                          disabled={deletingId === employee.id}
-                          className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
-                        >
-                          {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
-                        </button>
-                      )}
-                    </div>
+                    <Link to={`/employees/${employee.id}`} className="text-gray-900 hover:underline">
+                      {employee.name}
+                    </Link>
                   </td>
+                  <td className="px-4 py-2 text-gray-500">{employee.email}</td>
+                  <td className="px-4 py-2">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      {ROLE_LABELS[employee.position] ?? employee.position}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-gray-500">{employee.current_level_name ?? '—'}</td>
+                  <td className="px-4 py-2">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                      {EMPLOYEE_STATUS_OPTIONS.find((opt) => opt.value === employee.status)?.label ??
+                        employee.status}
+                    </span>
+                  </td>
+                  {canDelete && (
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(employee)}
+                        disabled={deletingId === employee.id}
+                        className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
+                      >
+                        {deletingId === employee.id ? 'Đang xóa...' : 'Xóa'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
           </tbody>

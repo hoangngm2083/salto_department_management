@@ -1,22 +1,30 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { listDepartments } from '../api/departments';
 import { deleteEmployee, listEmployees } from '../api/employees';
 import { exportEmployees } from '../api/exports';
 import { useAuth } from '../context/useAuth';
+import { EMPLOYEE_STATUS_OPTIONS } from '../lib/employee-status';
 import { ROLE_LABELS } from '../lib/role-labels';
 import useCursorList from '../hooks/useCursorList';
 import CreateEmployeeModal from '../components/CreateEmployeeModal';
 import ImportEmployeesModal from '../components/ImportEmployeesModal';
 import Pager from '../components/Pager';
 
+const STATUS_OPTIONS = [{ value: 'all', label: 'Tất cả' }, ...EMPLOYEE_STATUS_OPTIONS];
+
 export default function EmployeesListPage() {
   const { user } = useAuth();
   const isAdmin = user.position === 'admin';
 
+  // Seeded once from the URL (e.g. a dashboard link like `/employees?status=active`)
+  // so a deep link lands pre-filtered - same convention as ProjectsListPage.
+  const [searchParams] = useSearchParams();
+
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [status, setStatus] = useState(() => searchParams.get('status') ?? 'all');
   const [departments, setDepartments] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
   const [showImport, setShowImport] = useState(false);
@@ -29,6 +37,7 @@ export default function EmployeesListPage() {
       params: {
         name: search || undefined,
         department_id: departmentId || undefined,
+        status: status === 'all' ? undefined : status,
       },
       debounceMs: 300,
     });
@@ -129,6 +138,17 @@ export default function EmployeesListPage() {
             ))}
           </select>
         )}
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+        >
+          {STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">

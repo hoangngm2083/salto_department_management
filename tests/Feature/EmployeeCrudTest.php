@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\EmployeeStatus;
 use App\Models\AssignmentRolePeriod;
 use App\Models\Department;
 use App\Models\Employee;
@@ -205,6 +206,32 @@ test('getEmployees_unknownDepartmentSlug_validationError', function () {
     $response->assertUnprocessable()
         ->assertJsonPath('success', false)
         ->assertJsonValidationErrors(['department_slug'], 'errors');
+});
+
+test('getEmployees_status_matchingEmployees', function () {
+    // Arrange
+    Employee::factory()->create(['position' => 'employee', 'status' => EmployeeStatus::Active]);
+    Employee::factory()->create(['position' => 'employee', 'status' => EmployeeStatus::Inactive]);
+
+    // Act
+    $response = $this->getJson('/api/employees?status=active');
+
+    // Assert
+    $response->assertSuccessful();
+
+    $statuses = collect($response->json('data.data'))->pluck('status')->unique()->values()->all();
+
+    expect($statuses)->toBe(['active']);
+});
+
+test('getEmployees_invalidStatus_validationError', function () {
+    // Arrange / Act
+    $response = $this->getJson('/api/employees?status=unknown');
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonPath('success', false)
+        ->assertJsonValidationErrors(['status'], 'errors');
 });
 
 test('createEmployee_validPayload_created', function () {

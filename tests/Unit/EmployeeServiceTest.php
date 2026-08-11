@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\EmployeeStatus;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Level;
@@ -86,6 +87,20 @@ test('getEmployees_departmentSlug_matchingEmployees', function () {
     // Assert
     expect($result->count())->toBe(1)
         ->and($result->items()[0]->department_id)->toBe($department->id);
+});
+
+test('getEmployees_status_matchingEmployees', function () {
+    // Arrange
+    Employee::factory()->create(['position' => 'employee', 'status' => EmployeeStatus::Active]);
+    Employee::factory()->create(['position' => 'employee', 'status' => EmployeeStatus::Inactive]);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $result = $service->getPaginated(['status' => EmployeeStatus::Active->value]);
+
+    // Assert
+    expect($result->count())->toBe(1)
+        ->and($result->items()[0]->status)->toBe(EmployeeStatus::Active);
 });
 
 test('upsertEmployee_validData_employeeCreated', function () {

@@ -47,6 +47,7 @@ class EmployeeService
             ->when($data['name'] ?? null, fn ($query, $name) => $query->nameContains($name))
             ->when($data['department_id'] ?? null, fn ($query, $departmentId) => $query->where('department_id', $departmentId))
             ->when($data['department_slug'] ?? null, fn ($query, $slug) => $query->whereRelation('department', 'slug', $slug))
+            ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when(
                 ! empty($positions),
                 fn ($query) => $query->whereIn('position', (array) $positions),
