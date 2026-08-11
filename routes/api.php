@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ProjectManagerController;
 use App\Http\Controllers\Api\V1\ProjectMemberController;
 use App\Http\Controllers\Api\V1\ProjectRoleController;
+use App\Http\Controllers\Api\V1\RoleChangeRequestController;
 use App\Http\Controllers\Api\V1\TaskCommentController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\Api\V1\TaskDelayRequestController;
@@ -127,6 +128,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('show', 'abilities:leave-requests:read')
         ->middlewareFor('store', 'abilities:leave-requests:create')
         ->middlewareFor('update', 'abilities:leave-requests:update');
+
+    Route::apiResource('role-change-requests', RoleChangeRequestController::class)
+        ->only(['store', 'show'])
+        ->middlewareFor('store', 'abilities:role-change-requests:create')
+        ->middlewareFor('show', 'abilities:role-change-requests:read');
 
     Route::apiResource('approvals', ApprovalController::class)
         ->only(['index', 'show', 'update'])

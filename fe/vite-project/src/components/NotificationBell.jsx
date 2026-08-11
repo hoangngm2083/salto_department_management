@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { listNotifications, markNotificationsAsRead, updateNotificationStatus } from '../api/notifications';
+import { WORKFLOW_TYPE_LABELS } from '../lib/workflow-type';
 
 const POLL_INTERVAL_MS = Number(import.meta.env.VITE_NOTIFICATION_POLL_INTERVAL_MS) || 60000;
+
+// Predicate phrases for ApprovalRequestDecided - deliberately not reused from
+// APPROVAL_STATUS_LABELS (those are noun-phrase badge labels like "Đã áp dụng",
+// which read wrong embedded after "của bạn đã").
+const APPROVAL_DECIDED_OUTCOME_PHRASES = {
+  applied: 'đã được áp dụng',
+  rejected: 'đã bị từ chối',
+  failed: 'đã duyệt xong nhưng áp dụng thất bại',
+};
 
 function NotificationText({ notification }) {
   const { type, data } = notification;
@@ -22,6 +32,29 @@ function NotificationText({ notification }) {
       <span className="text-gray-700">
         Yêu cầu nghỉ phép của bạn đã <strong className="font-medium text-gray-900">{statusLabel}</strong> bởi{' '}
         {data.reviewed_by}.
+      </span>
+    );
+  }
+
+  if (type === 'ApprovalStepActivated') {
+    const workflowLabel = WORKFLOW_TYPE_LABELS[data.workflow_type] ?? data.workflow_type;
+
+    return (
+      <span className="text-gray-700">
+        Có yêu cầu <strong className="font-medium text-gray-900">{workflowLabel}</strong>
+        {data.subject_employee_name ? ` cho ${data.subject_employee_name}` : ''} đang chờ bạn duyệt.
+      </span>
+    );
+  }
+
+  if (type === 'ApprovalRequestDecided') {
+    const workflowLabel = WORKFLOW_TYPE_LABELS[data.workflow_type] ?? data.workflow_type;
+    const outcomePhrase = APPROVAL_DECIDED_OUTCOME_PHRASES[data.status] ?? 'đã có kết quả';
+
+    return (
+      <span className="text-gray-700">
+        Yêu cầu <strong className="font-medium text-gray-900">{workflowLabel}</strong> của bạn {outcomePhrase}
+        {data.status === 'failed' && data.failure_reason ? `: ${data.failure_reason}` : '.'}
       </span>
     );
   }

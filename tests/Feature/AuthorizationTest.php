@@ -341,8 +341,10 @@ test('getProjectRoles_managerToken_successful', function () {
     $response->assertSuccessful();
 });
 
-test('getProjectRoles_employeeReadToken_forbidden', function () {
-    // Arrange
+test('getProjectRoles_employeeReadToken_successful', function () {
+    // Arrange - Phase E: self-service Role Change requests need any employee to browse the
+    // list of assignable roles (pure reference data, no sensitivity), so this is no longer
+    // manager/admin-only.
     $employee = Employee::factory()->create(['position' => 'employee']);
     Sanctum::actingAs($employee, ['project-roles:read']);
 
@@ -350,8 +352,7 @@ test('getProjectRoles_employeeReadToken_forbidden', function () {
     $response = $this->getJson('/api/project-roles');
 
     // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
+    $response->assertSuccessful();
 });
 
 test('createProjectRole_managerToken_forbidden', function () {

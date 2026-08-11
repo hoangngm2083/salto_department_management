@@ -6,6 +6,8 @@ use App\Enums\ApprovalActionType;
 use App\Enums\ApprovalStatus;
 use App\Enums\ApprovalStepStatus;
 use App\Enums\ApproverKind;
+use App\Events\ApprovalRequestDecided;
+use App\Events\ApprovalStepActivated;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\Employee;
@@ -82,14 +84,22 @@ class ApprovalRequestService
                 'submitted_at' => now(),
             ]);
 
+            $firstStep = null;
+
             foreach ($workflow->steps($requestable) as $index => $definition) {
-                $approval->steps()->create([
+                $step = $approval->steps()->create([
                     'step_order' => $index + 1,
                     'approver_kind' => $definition->approverKind,
                     'approver_employee_id' => $definition->approverEmployeeId,
                     'required_permission' => $definition->requiredPermission,
                     'status' => $index === 0 ? ApprovalStepStatus::Active : ApprovalStepStatus::Pending,
                 ]);
+
+                $firstStep ??= $step;
+            }
+
+            if ($firstStep !== null) {
+                ApprovalStepActivated::dispatch($approval, $firstStep);
             }
 
             return $approval->fresh(['steps']);
@@ -127,12 +137,18 @@ class ApprovalRequestService
                     'current_step_order' => $nextStep->step_order,
                 ]);
 
+                ApprovalStepActivated::dispatch($approval, $nextStep);
+
                 return $approval->fresh(['steps']);
             }
 
             $approval->update(['status' => ApprovalStatus::Approved, 'approved_at' => now()]);
 
-            return $this->apply($approval);
+            $approval = $this->apply($approval);
+
+            ApprovalRequestDecided::dispatch($approval);
+
+            return $approval;
         });
     }
 
@@ -154,6 +170,8 @@ class ApprovalRequestService
             $this->recordAction($approval, $activeStep, $actor, ApprovalActionType::Reject, $comment);
 
             $approval->update(['status' => ApprovalStatus::Rejected, 'rejected_at' => now()]);
+
+            ApprovalRequestDecided::dispatch($approval);
 
             return $approval->fresh(['steps']);
         });

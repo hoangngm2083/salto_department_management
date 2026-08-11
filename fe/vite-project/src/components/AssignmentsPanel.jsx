@@ -8,11 +8,13 @@ import {
   listProjectAssignments,
 } from '../api/projectAssignments';
 import { listProjectRoles } from '../api/projectRoles';
+import { useAuth } from '../context/useAuth';
 import useCursorList from '../hooks/useCursorList';
 import { getTimelineRange, getZoomedRange } from '../lib/timeline';
 import EmployeeMultiSelect from './EmployeeMultiSelect';
 import Pager from './Pager';
 import ProjectRoleMultiSelect from './ProjectRoleMultiSelect';
+import RoleChangeRequestModal from './RoleChangeRequestModal';
 import { TimelineRow, TimelineTable, TimelineTableHeader, TimelineZoomControls } from './Timeline';
 
 /**
@@ -230,15 +232,20 @@ export default function AssignmentsPanel({ slug, project, canManage }) {
 }
 
 function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, onEnd, onEndRole, onAddRole }) {
+  const { user } = useAuth();
   const [showAddRole, setShowAddRole] = useState(false);
   const [roleOptions, setRoleOptions] = useState([]);
   const [newRoleId, setNewRoleId] = useState('');
   const [addingRole, setAddingRole] = useState(false);
+  const [showRoleChangeRequest, setShowRoleChangeRequest] = useState(false);
 
   const isActive = !assignment.end_date;
   const activeRolePeriods = assignment.role_periods.filter((period) => !period.end_date);
   const endedRolePeriods = assignment.role_periods.filter((period) => period.end_date);
   const activeRoleIds = activeRolePeriods.map((period) => period.project_role_id);
+  // Matches RoleChangeRequestPolicy::create() on the backend: the assignment's own
+  // employee (self-service) or the project's PM/admin (canManage) may request a change.
+  const canRequestRoleChange = canManage || assignment.employee_id === user.id;
 
   function openAddRole() {
     setShowAddRole(true);
@@ -275,17 +282,33 @@ function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, on
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-medium text-gray-900">{assignment.employee_name}</p>
 
-        {canManage && isActive && (
-          <button
-            type="button"
-            onClick={onEnd}
-            disabled={ending}
-            className="shrink-0 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
-          >
-            {ending ? 'Đang kết thúc...' : 'Kết thúc'}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {canRequestRoleChange && isActive && (
+            <button
+              type="button"
+              onClick={() => setShowRoleChangeRequest(true)}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Đổi vai trò
+            </button>
+          )}
+
+          {canManage && isActive && (
+            <button
+              type="button"
+              onClick={onEnd}
+              disabled={ending}
+              className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
+            >
+              {ending ? 'Đang kết thúc...' : 'Kết thúc'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {showRoleChangeRequest && (
+        <RoleChangeRequestModal assignment={assignment} onClose={() => setShowRoleChangeRequest(false)} />
+      )}
 
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         {activeRolePeriods.map((period) => (

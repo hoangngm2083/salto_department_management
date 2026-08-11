@@ -10,6 +10,7 @@ import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import DepartmentsListPage from './pages/DepartmentsListPage';
 import DepartmentDetailPage from './pages/DepartmentDetailPage';
 import EmployeesListPage from './pages/EmployeesListPage';
+import ApprovalsListPage from './pages/ApprovalsListPage';
 import LeaveRequestsListPage from './pages/LeaveRequestsListPage';
 import LevelsListPage from './pages/LevelsListPage';
 import MyProjectsPage from './pages/MyProjectsPage';
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
           <Route path="/leave-requests" element={<LeaveRequestsListPage />} />
           <Route path="/task-delay-requests" element={<TaskDelayRequestsListPage />} />
+          <Route path="/approvals" element={<ApprovalsListPage />} />
           <Route path="/my-tasks" element={<MyTasksPage />} />
           <Route path="/my-projects" element={<MyProjectsPage />} />
           {/* Open to every authenticated role - ProjectPolicy::view allows a plain

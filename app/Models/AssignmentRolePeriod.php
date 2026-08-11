@@ -36,4 +36,9 @@ class AssignmentRolePeriod extends Model
     {
         return $this->belongsTo(ProjectRole::class);
     }
+
+    public function sourceApprovalRequest(): BelongsTo
+    {
+        return $this->belongsTo(ApprovalRequest::class);
+    }
 }

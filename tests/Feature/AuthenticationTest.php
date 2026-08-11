@@ -65,6 +65,9 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'leave-requests:read',
         'leave-requests:create',
         'leave-requests:update',
+        'role-change-requests:read',
+        'role-change-requests:create',
+        'project-roles:read',
         'approvals:read',
         'approvals:update',
         'notifications:read',
@@ -74,7 +77,6 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'departments:update',
         'levels:read',
         'projects:manage-assignments',
-        'project-roles:read',
     ]);
 });
 
@@ -112,6 +114,9 @@ test('login_employeeCredentials_abilitiesPersisted', function () {
         'leave-requests:read',
         'leave-requests:create',
         'leave-requests:update',
+        'role-change-requests:read',
+        'role-change-requests:create',
+        'project-roles:read',
         'approvals:read',
         'approvals:update',
         'notifications:read',

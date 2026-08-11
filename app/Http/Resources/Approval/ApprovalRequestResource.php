@@ -16,6 +16,8 @@ class ApprovalRequestResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'requestable_type' => $this->requestable_type,
+            'requestable_id' => $this->requestable_id,
             'workflow_type' => $this->workflow_type->value,
             'requested_by' => $this->requested_by,
             'requester_name' => $this->requester?->name,

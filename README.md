@@ -422,7 +422,7 @@ stateDiagram-v2
 
 Nhiều loại thay đổi trong hệ thống (đổi role trong project, thăng cấp bậc, chuyển project, thêm nhân sự vào project...) đều cần đi qua **1 chuỗi nhiều người duyệt** trước khi có hiệu lực — khác hẳn `LeaveRequest`/`TaskDelayRequest` (chỉ 1 người duyệt, xảy ra hàng ngày, rủi ro thấp, dùng flat-status pattern riêng — xem [Quản lý Công việc](#quản-lý-công-việc-task-management)). Approval Engine là 1 module generic xây **1 lần dùng chung** cho mọi loại yêu cầu đa bước này, thay vì lặp lại y hệt state machine + step logic cho từng loại request.
 
-Đây hiện là phần nền tảng (core engine) — 3 bảng generic, Registry, State machine, và endpoint duyệt/từ chối/huỷ dùng chung. **Chưa có workflow cụ thể nào submit được** (Role Change, Level Promotion, Project Transfer, Project Assignment, Leave Request migration là các bước tiếp theo, xem [project_management_plan.md](project_management_plan.md) mục 4.1 và mục 7), nhưng toàn bộ cơ chế duyệt/áp dụng bên dưới đã hoạt động đầy đủ và có test.
+Core engine — 3 bảng generic, Registry, State machine, endpoint duyệt/từ chối/huỷ dùng chung — đã có từ Phase D. **Phase E đã lấp đầy workflow cụ thể đầu tiên: Project Role Change** (`POST /api/role-change-requests`, ADD/REPLACE/REMOVE role trên 1 assignment, duyệt bởi Project Manager, áp dụng ngay khi duyệt xong bước cuối) — đúng khuôn "5 mảnh" mô tả ở mục dưới, không đụng gì vào engine core ngoài việc thêm 2 Event generic (`ApprovalStepActivated`, `ApprovalRequestDecided`) để hỗ trợ notification cho mọi workflow. Level Promotion, Project Transfer, Project Assignment, Leave Request migration vẫn là các bước tiếp theo, xem [project_management_plan.md](project_management_plan.md) mục 4.1 và mục 7.
 
 ### Ý tưởng cốt lõi
 
@@ -545,24 +545,26 @@ app/
 ├── Console/Commands/       # SendLeaveRequestReminders (Scheduler)
 ├── Enums/                  # ImportStatus, ImportType, ExportType, LeaveRequestStatus, NotificationReadStatus,
 │                           # ActiveStatus, EmployeeStatus, ProjectStatus, ProjectAssignmentStatus, TaskStatus, TaskDelayRequestStatus,
-│                           # ApprovalStatus, ApprovalStepStatus, ApprovalActionType, ApproverKind, WorkflowType
-├── Events/                 # LeaveRequestSubmitted, LeaveRequestReviewed
-├── Listeners/              # SendLeaveRequestSubmittedNotification, SendLeaveRequestReviewedNotification
-├── Notifications/          # LeaveRequestSubmitted, LeaveRequestReviewed, LeaveRequestReminder
+│                           # ApprovalStatus, ApprovalStepStatus, ApprovalActionType, ApproverKind, WorkflowType, RoleChangeMode
+├── Events/                 # LeaveRequestSubmitted, LeaveRequestReviewed, ApprovalStepActivated, ApprovalRequestDecided
+├── Listeners/              # SendLeaveRequestSubmittedNotification, SendLeaveRequestReviewedNotification,
+│                           # NotifyApprovalStepApprover, NotifyApprovalRequestSubjectEmployee
+├── Notifications/          # LeaveRequestSubmitted, LeaveRequestReviewed, LeaveRequestReminder,
+│                           # ApprovalStepActivated, ApprovalRequestDecided
 ├── Http/
 │   ├── Controllers/Api/V1/ # AuthController, DepartmentController, EmployeeController, LeaveRequestController, NotificationController,
 │   │                       # ImportController, ExportController, LevelController, ProjectController, ProjectRoleController,
 │   │                       # ProjectManagerController, ProjectAssignmentController, AssignmentRolePeriodController, ProjectMemberController,
-│   │                       # TaskController, TaskCommentController, TaskDelayRequestController, ApprovalController
+│   │                       # TaskController, TaskCommentController, TaskDelayRequestController, ApprovalController, RoleChangeRequestController
 │   ├── Requests/           # Form Request validation theo từng nghiệp vụ (Import/, Export/, Notification/, Project/, ProjectAssignment/,
-│   │                       # Task/, TaskComment/, TaskDelayRequest/, Approval/, ...)
+│   │                       # Task/, TaskComment/, TaskDelayRequest/, Approval/, RoleChangeRequest/, ...)
 │   └── Resources/          # API Resource transformer (1 thư mục con / resource, mirror Requests/)
 ├── Jobs/Import/            # ProcessImportJob, ImportChunkJob
 ├── Models/                 # Department, Employee, LeaveRequest, Import, ImportError, Level, Project, ProjectRole, ProjectManager,
 │                           # ProjectAssignment, AssignmentRolePeriod, Task, TaskComment, TaskDelayRequest,
-│                           # ApprovalRequest, ApprovalStep, ApprovalAction
+│                           # ApprovalRequest, ApprovalStep, ApprovalAction, RoleChangeRequest
 ├── Policies/                # DepartmentPolicy, EmployeePolicy, LevelPolicy, ImportPolicy, LeaveRequestPolicy,
-│                            # ProjectPolicy, ProjectRolePolicy, TaskPolicy, TaskDelayRequestPolicy, ApprovalRequestPolicy
+│                            # ProjectPolicy, ProjectRolePolicy, TaskPolicy, TaskDelayRequestPolicy, ApprovalRequestPolicy, RoleChangeRequestPolicy
 └── Services/
     ├── AuthService.php
     ├── DepartmentService.php
@@ -574,17 +576,19 @@ app/
     ├── ProjectAssignmentCloser.php + ProjectAssignmentCloserService.php
     ├── TaskService.php / TaskCommentService.php / TaskDelayRequestService.php
     ├── ApprovalRequestService.php     # submit/approve/reject/cancel - generic, dùng chung mọi workflow
+    ├── RoleChangeRequestService.php   # workflow cụ thể đầu tiên (Phase E) - validate + gọi ApprovalRequestService::submit()
     ├── ImportService.php
     ├── ExportService.php
     ├── Import/              # CsvReader, ImportStrategyResolver, AbstractImportHandler, Handlers/
     ├── Export/              # ExportStrategyResolver, AbstractExportHandler, Handlers/
     └── Approval/             # ApprovalWorkflowRegistry, ApprovedRequestHandlerRegistry, ApprovalStateMachine,
                                # ApprovalStepDefinition, Contracts/ (ApprovalWorkflow, ApprovedRequestHandler, ApprovableRequest)
+                               # Workflows/RoleChangeApprovalWorkflow, Handlers/ApplyRoleChangeHandler
 fe/vite-project/            # SPA React + Vite (giao diện người dùng)
-│                           # đã có UI cho Department/Employee/Level/Project/Assignment/Work-history;
-│                           # UI cho Task Management (Phase C.5) chưa triển khai
-├── src/api/notifications.js
-└── src/components/NotificationBell.jsx
+│                           # đã có UI cho Department/Employee/Level/Project/Assignment/Work-history/Task/Dashboard/Approvals;
+├── src/api/notifications.js, approvals.js, roleChangeRequests.js
+├── src/pages/ApprovalsListPage.jsx
+└── src/components/NotificationBell.jsx, RoleChangeRequestModal.jsx, ApprovalDetailModal.jsx
 tests/
 ├── Feature/                 # Test luồng API end-to-end
 └── Unit/                    # Test đơn vị cho Service/Job/Handler

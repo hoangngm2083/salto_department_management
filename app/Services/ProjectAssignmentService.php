@@ -119,7 +119,9 @@ class ProjectAssignmentService
     }
 
     /**
-     * Add a role period to an active assignment.
+     * Add a role period to an active assignment. `source_approval_request_id` is optional -
+     * set by ApplyRoleChangeHandler (Phase E) to trace which approval created the period,
+     * left null for the direct admin/PM "add role" action this method also serves.
      */
     public function addRole(ProjectAssignment $assignment, array $data): AssignmentRolePeriod
     {
@@ -145,6 +147,7 @@ class ProjectAssignmentService
             $rolePeriod = $assignment->rolePeriods()->create([
                 'project_role_id' => $data['project_role_id'],
                 'start_date' => $data['start_date'] ?? today()->toDateString(),
+                'source_approval_request_id' => $data['source_approval_request_id'] ?? null,
             ]);
 
             return $rolePeriod->load('projectRole:id,name,slug');

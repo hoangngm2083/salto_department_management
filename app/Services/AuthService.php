@@ -55,6 +55,9 @@ class AuthService
             'leave-requests:read',
             'leave-requests:create',
             'leave-requests:update',
+            'role-change-requests:read',
+            'role-change-requests:create',
+            'project-roles:read',
             'approvals:read',
             'approvals:update',
             'notifications:read',
@@ -71,7 +74,6 @@ class AuthService
             'departments:update',
             'levels:read',
             'projects:manage-assignments',
-            'project-roles:read',
         ];
 
         return match ($employee->position) {
