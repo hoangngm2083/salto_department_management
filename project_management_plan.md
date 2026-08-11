@@ -155,6 +155,16 @@ level_promotion_requests    (2 bước: manager → admin)
 
 **Không gộp các bảng detail này lại với nhau** — mỗi workflow type vẫn có bảng riêng như thiết kế gốc, vì data shape khác nhau đủ nhiều (role_change có `change_mode`/`from_role_id`/`to_role_id`, transfer có `source`/`target`...).
 
+### 4.1. Điều chỉnh bổ sung (quyết định 2026-08-11, trước khi code Phase D)
+
+Sau khi đối chiếu 1 đề xuất approve-flow mới của user với thiết kế gốc, chốt thêm các điểm sau (ngoài 2 điều chỉnh ở đầu mục 4):
+
+- **Thêm `ApproverKind::DepartmentManager`** (bên cạnh 5 kind gốc: DirectManager/ProjectManager/SystemAdmin/SpecificEmployee/Permission) — pool-based, resolve theo `position=manager` + cùng `department_id` với subject employee, dùng cho bước Department Manager riêng biệt bên dưới.
+- **Level Promotion (Phase F) đổi từ 2 bước → 3 bước**: `employee → Direct Manager (manager_employee_id) → Department Manager (position=manager) → Admin`. Lý do: "PM" (role theo project) không có thẩm quyền tự nhiên với quyết định cấp bậc (org-level, không gắn project) — user tự nhận ra điều này và chốt bỏ PM khỏi flow này, tách Direct Manager và Department Manager thành 2 bước riêng thay vì 1 bước có fallback như bản gốc.
+- **Leave Request migrate sang Approval Engine (Tier 1)**, không còn là bảng flat đứng riêng — thêm bước PM trước Manager: `employee → PM (của project được chọn lúc tạo request) → Department Manager`. Lý do: PM có thể cần biết/từ chối vì dự án đang gấp tiến độ. Đây là thay đổi kiến trúc cho 1 feature đã ship (có 4 test file cũ) — tracked riêng ở **Phase E.5** (xem mục 7), không nằm trong Phase D.
+- **API convention đổi khác bản gốc `new_business.md` §32**: dùng 1 endpoint `PATCH /api/approvals/{approval}` với `type` (approve|reject|cancel) trong body, thay vì 3 route riêng `POST .../approve|reject|cancel` — khớp đúng convention RESTful đã dùng cho `leave-requests`/`task-delay-requests` (`PATCH` + field quyết định hành động trong body) thay vì thêm route theo động từ. `type` là hành động, không phải `status` — status kết quả luôn do server tính, không cho client set trực tiếp (giữ đúng tinh thần chống "Cho client gửi `approved_by`, `current_step` hoặc `status`" của `new_business.md` mục 5.2).
+- **Bỏ hẳn ý tưởng "yêu cầu gia hạn project" (PM → Admin)** khỏi roadmap — không có workflow, không có bảng riêng. User đề xuất hướng thay thế: tạo 1 project "Project Management" gồm các PM của các project khác làm thành viên, gia hạn project thực chất = gia hạn task (dùng `task_delay_requests` đã có) trong project này, Admin tự cập nhật `projects.end_date` theo tay. Ghi chú lại ở mục 6 làm tham khảo tương lai, chưa lên lịch.
+
 ---
 
 ## 5. Module Task Management (mới, quyết định riêng — KHÔNG dùng Approval Engine)
@@ -268,6 +278,8 @@ request_details            // 1 bảng chung, cột nullable theo type, index re
 
 Lưu ý: quyết định gộp này **chỉ áp dụng tier-2**, không áp dụng cho Tier-1 Approval Engine (mục 4) — 2 tầng độc lập nhau.
 
+**Ý tưởng "gia hạn project" bằng project meta (chưa lên lịch, chỉ ghi chú tham khảo — quyết định 2026-08-11):** thay vì xây workflow riêng (`PM → Admin`) cho việc gia hạn deadline 1 project, tạo 1 project đặc biệt tên "Project Management", add toàn bộ PM của các project khác làm thành viên; khi 1 project cần gia hạn, PM tạo task trong project "Project Management" rồi request delay task đó (dùng `task_delay_requests` đã có sẵn từ C.5), Admin duyệt xong tự tay cập nhật `projects.end_date` của project thật. Ưu điểm: không cần thêm bảng/workflow mới, tái dùng toàn bộ engine task delay đã ship. Chưa triển khai — chỉ là hướng dự phòng nếu nhu cầu gia hạn project phát sinh thật.
+
 ---
 
 ## 7. Thứ tự triển khai & ước lượng
@@ -278,15 +290,16 @@ Lưu ý: quyết định gộp này **chỉ áp dụng tier-2**, không áp dụ
 | B ✅ (2026-08-05) | `projects`, `project_roles`, `project_managers` CRUD + Policy | 3-4 ngày |
 | C ✅ (2026-08-10) | `project_assignments` + `assignment_role_periods` (tạo trực tiếp bởi admin), work-history endpoint, lock+validate active period | 4-6 ngày |
 | **C.5 ✅ (2026-08-10)** | **Task Management** (Task + Comment + Delay Request + Policy + progress trên Project resource, cộng FE Kanban board + modal) | **6-8 ngày** |
-| D | Approval Engine core (requests/steps/actions, Workflow interface, Registry, State machine, approve/reject/cancel, locking) | 6-9 ngày |
+| **D ✅ (2026-08-11)** | **Approval Engine core** (requests/steps/actions, Workflow interface, Registry, State machine, approve/reject/cancel, locking) — chỉ engine, chưa có workflow cụ thể nào | **6-9 ngày** |
 | E | Role Change workflow end-to-end (ADD/REPLACE/REMOVE) — **milestone demo đầu tiên** | 3-4 ngày |
-| F | Level Promotion (2 bước manager→admin, scheduler effective_date) | 3-4 ngày |
+| E.5 | Leave Request migrate sang Approval Engine, thêm bước PM (2 bước: PM → Department Manager) — xem mục 4.1 | 2-3 ngày |
+| F | Level Promotion (**3 bước: Direct Manager → Department Manager → Admin**, scheduler effective_date) — xem mục 4.1 | 4-5 ngày |
 | G | Project Assignment Request + Project Transfer | 6-8 ngày |
 | H (tuỳ chọn) | WebSocket realtime — cần approval dependency mới | 2-3 ngày |
 | I (tuỳ chọn, cuối) | Redis queue/Horizon, rate limit, OpenAPI polish | 3-5 ngày |
 | Backlog | Gộp `requests`/`request_details` (mục 6) | chưa lên lịch |
 
-**Tổng phần bắt buộc (A → G, đã gồm Task Management): ~33-46 ngày công.**
+**Tổng phần bắt buộc (A → G, đã gồm Task Management + E.5): ~37-51 ngày công.**
 
 Task Management (C.5) chèn ngay sau Assignment Core, **trước** Approval Engine (D) — vì không phụ thuộc gì vào engine đó, giúp có sản phẩm demo được (dashboard + kanban) sớm hơn.
 
@@ -598,3 +611,20 @@ Backend: 18/18 test `TaskCrudTest.php` (bao gồm 4 test mới cho `/tasks/{task
 - **Không làm "eager load gộp"** (câu hỏi phụ user nêu cùng lúc): gộp task+comments+delay-requests vào 1 response, hoặc gộp managers+members+tasks vào `GET /projects/{slug}` — quyết định **không làm**, giữ nguyên endpoint tách riêng theo SRP (đúng lý do đã ghi ở mục 5 cho `/assign`) và cursor pagination độc lập từng list (gộp chỉ lợi được đúng lần fetch đầu, các trang sau vẫn phải gọi endpoint riêng, đổi lại là response phình to + phức tạp hoá cache-invalidation). Điểm "sửa rẻ" duy nhất đáng làm (tránh watefall `project` → rồi mới tới `AssignmentsPanel`/`TasksPanel`) hoá ra **đã có sẵn trong code** — `ProjectDetailPage.jsx` truyền thẳng `slug` (biết ngay từ `useParams()`) cho 2 panel đó thay vì đợi `project` resolve, đã có comment giải thích rõ tại chỗ.
 
 **Test cập nhật:** `TaskAuthorizationTest::getTask_employeeProjectMemberNotAssigned_forbidden` (đổi từ `_viewable`), `TaskCommentTest::createComment_projectMemberNotAssignee_forbidden` (mới), `TaskCrudTest`: `assignTask_directReassignToDifferentEmployee_forbidden`, `assignTask_reassignToSameEmployee_allowed`, `assignTask_asAdmin_directReassignAllowed` (3 test mới). Toàn bộ suite backend (421 test) pass; `vendor/bin/pint --dirty` sạch. README bảng phân quyền (dòng 71-72) cập nhật khớp hành vi mới. Chưa verify lại qua browser sau đợt sửa này.
+
+### 7.13. Ghi chú triển khai Phase D — Approval Engine core (đã xong 2026-08-11)
+
+Phạm vi chốt trước khi code (đã hỏi lại user, xem mục 4.1): **chỉ engine generic**, không có workflow cụ thể nào trong phase này — Role Change (E), Level Promotion (F, đã sửa 3 bước), Leave Request migration (E.5 mới), Project Assignment/Transfer (G) vẫn để lại các phase sau. API đổi khác `new_business.md` §32 gốc: 1 endpoint `PATCH /api/approvals/{approval}` với `type` trong body thay vì 3 route `POST .../approve|reject|cancel`, theo đúng convention `leave-requests`/`task-delay-requests` đã có.
+
+**Quyết định không hỏi lại (suy ra từ pattern có sẵn):**
+
+- `workflow_type` dùng PHP backed enum (`WorkflowType`) seed sẵn 5 case đã chốt lịch (ProjectRoleChange/ProjectTransfer/LevelPromotion/ProjectAssignment/LeaveRequest) dù chưa có class implement nào — chỉ là nhãn, không phải thiết kế thừa, vì cột enum-cast cần ít nhất 1 giá trị hợp lệ để tạo được row test thật (enum rỗng không dùng được).
+- `ApprovalWorkflowRegistry`/`ApprovedRequestHandlerRegistry` bind qua Laravel container `tag()`/`tagged()` (rỗng ở Phase D) thay vì sửa constructor `AppServiceProvider` mỗi phase — mỗi phase sau chỉ cần thêm 1 dòng `tag()`, không đụng vào binding cũ.
+- `ApproverKind::SystemAdmin` không được match trong `ApprovalRequestPolicy::canActOnStep()` — admin đã bypass toàn bộ policy qua `before()` (đúng convention `TaskPolicy`/`LeaveRequestPolicy`/`TaskDelayRequestPolicy`), nên nhánh này chắc chắn không bao giờ chạy tới; giữ lại match arm sẽ là dead code nên đã bỏ, chỉ giữ case trong enum làm nhãn cho tương lai.
+- `ApprovalStateMachine` báo lỗi bằng `ValidationException::withMessages()` (422) thay vì exception riêng — mirror đúng `TaskDelayRequestService`/business-rule-violation pattern hiện có, không tạo exception hierarchy mới cho việc này.
+- Không có endpoint submit chung (`POST /api/approvals`) — submit luôn đi qua endpoint riêng của từng workflow cụ thể (`POST /role-change-requests`... ở Phase E+), gọi `ApprovalRequestService::submit()` nội bộ; Phase D chỉ expose `GET`/`GET {id}`/`PATCH {id}`.
+- Test Phase D (chưa có workflow thật) tạo thẳng `approval_requests`/`approval_steps` bằng factory (bỏ qua `submit()`), bind fake `ApprovedRequestHandler` qua `app()->instance()` ngay trong test để verify đường Approved→Applied/Failed — không tạo migration/bảng test-only riêng, dùng `Employee` có sẵn làm placeholder cho cột `requestable` (polymorphic) trong factory.
+
+**Phát sinh khi code:** `AuthenticationTest::login_managerCredentials_abilitiesPersisted`/`login_employeeCredentials_abilitiesPersisted` fail vì hardcode nguyên mảng abilities — thêm `approvals:read`/`approvals:update` vào `AuthService::abilitiesFor()` thì phải cập nhật lại 2 test này theo đúng thứ tự mới (đã sửa).
+
+**Test:** 15 test mới (`ApprovalStateMachineTest`, `ApprovalWorkflowRegistryTest`, `ApprovedRequestHandlerRegistryTest`, `ApprovalRequestCrudTest`, `ApprovalRequestAuthorizationTest`). Toàn bộ suite (467 test) pass; `vendor/bin/pint --dirty` sạch; `php artisan route:list --path=approvals` xác nhận đúng 3 route (`GET /approvals`, `GET /approvals/{approval}`, `PATCH /approvals/{approval}`). Không có FE ở phase này (chưa có workflow thật để submit) nên không verify qua browser.

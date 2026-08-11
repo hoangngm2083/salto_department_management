@@ -55,6 +55,8 @@ class AuthService
             'leave-requests:read',
             'leave-requests:create',
             'leave-requests:update',
+            'approvals:read',
+            'approvals:update',
             'notifications:read',
             'notifications:update',
         ];

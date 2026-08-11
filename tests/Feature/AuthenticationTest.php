@@ -65,6 +65,8 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'leave-requests:read',
         'leave-requests:create',
         'leave-requests:update',
+        'approvals:read',
+        'approvals:update',
         'notifications:read',
         'notifications:update',
         'employees:create',
@@ -110,6 +112,8 @@ test('login_employeeCredentials_abilitiesPersisted', function () {
         'leave-requests:read',
         'leave-requests:create',
         'leave-requests:update',
+        'approvals:read',
+        'approvals:update',
         'notifications:read',
         'notifications:update',
     ]);

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\ApprovalController;
 use App\Http\Controllers\Api\V1\AssignmentRolePeriodController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepartmentController;
@@ -126,6 +127,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('show', 'abilities:leave-requests:read')
         ->middlewareFor('store', 'abilities:leave-requests:create')
         ->middlewareFor('update', 'abilities:leave-requests:update');
+
+    Route::apiResource('approvals', ApprovalController::class)
+        ->only(['index', 'show', 'update'])
+        ->middlewareFor('index', 'abilities:approvals:read')
+        ->middlewareFor('show', 'abilities:approvals:read')
+        ->middlewareFor('update', 'abilities:approvals:update');
 
     Route::post('imports', [ImportController::class, 'store'])->middleware('abilities:imports:create');
     Route::get('imports/{import}', [ImportController::class, 'show'])->middleware('abilities:imports:read');

@@ -13,6 +13,7 @@ Hệ thống quản lý phòng ban, nhân sự, dự án và công việc: RESTf
 - [Quản lý Cấp bậc (xếp hạng theo khoảng trống)](#quản-lý-cấp-bậc-xếp-hạng-theo-khoảng-trống)
 - [Quản lý Dự án & Phân công nhân sự](#quản-lý-dự-án--phân-công-nhân-sự)
 - [Quản lý Công việc (Task Management)](#quản-lý-công-việc-task-management)
+- [Approval Engine (nền tảng phê duyệt đa bước)](#approval-engine-nền-tảng-phê-duyệt-đa-bước)
 - [Điểm hay / đáng chú ý](#điểm-hay--đáng-chú-ý)
 - [Cấu trúc thư mục](#cấu-trúc-thư-mục)
 - [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
@@ -417,6 +418,101 @@ stateDiagram-v2
 
 
 
+## Approval Engine (nền tảng phê duyệt đa bước)
+
+Nhiều loại thay đổi trong hệ thống (đổi role trong project, thăng cấp bậc, chuyển project, thêm nhân sự vào project...) đều cần đi qua **1 chuỗi nhiều người duyệt** trước khi có hiệu lực — khác hẳn `LeaveRequest`/`TaskDelayRequest` (chỉ 1 người duyệt, xảy ra hàng ngày, rủi ro thấp, dùng flat-status pattern riêng — xem [Quản lý Công việc](#quản-lý-công-việc-task-management)). Approval Engine là 1 module generic xây **1 lần dùng chung** cho mọi loại yêu cầu đa bước này, thay vì lặp lại y hệt state machine + step logic cho từng loại request.
+
+Đây hiện là phần nền tảng (core engine) — 3 bảng generic, Registry, State machine, và endpoint duyệt/từ chối/huỷ dùng chung. **Chưa có workflow cụ thể nào submit được** (Role Change, Level Promotion, Project Transfer, Project Assignment, Leave Request migration là các bước tiếp theo, xem [project_management_plan.md](project_management_plan.md) mục 4.1 và mục 7), nhưng toàn bộ cơ chế duyệt/áp dụng bên dưới đã hoạt động đầy đủ và có test.
+
+### Ý tưởng cốt lõi
+
+- **Tách "cơ chế duyệt" khỏi "dữ liệu nghiệp vụ"**: 3 bảng generic `approval_requests`/`approval_steps`/`approval_actions` (ai duyệt, đang ở bước nào, ai đã duyệt/từ chối) hoàn toàn không biết "role change" hay "level promotion" là gì — chúng trỏ tới bảng business riêng của từng loại (VD `role_change_requests` ở Phase E) qua Eloquent polymorphic relation (`approval_requests.requestable_type`/`requestable_id`, `$table->morphs('requestable')`). Ngược lại, bảng business request không tự lưu trạng thái duyệt của riêng nó — trạng thái luôn nằm ở `approval_requests.status`.
+- **Strategy Pattern cho 2 điểm biến đổi theo từng loại request**: `ApprovalWorkflow::steps()` (loại này cần ai duyệt, theo thứ tự nào — VD Role Change chỉ cần 1 bước PM, Level Promotion cần 3 bước Direct Manager → Department Manager → Admin) và `ApprovedRequestHandler::apply()` (duyệt xong hết các bước thì áp dụng thay đổi gì vào dữ liệu thật). Mỗi loại request = 1 class nhỏ implement 2 interface này (`app/Services/Approval/Contracts/`), không có `match($type)` rải rác trong code xử lý chung.
+- **Registry Pattern để resolve đúng class theo loại**: `ApprovalWorkflowRegistry`/`ApprovedRequestHandlerRegistry` tra theo `WorkflowType` (enum), bind qua Laravel container `tag()`/`tagged()` (`AppServiceProvider`) — thêm 1 loại request mới chỉ cần thêm 1 dòng `tag()`, không sửa code registry/service đã có (Open/Closed Principle).
+- **Approver kind 2 nhóm khác cách resolve**: kind resolve được ngay 1 người cụ thể lúc tạo step (`DirectManager`/`ProjectManager`/`SpecificEmployee` — VD "PM của project X lúc submit là ai" tra 1 lần, lưu thẳng `approver_employee_id`) khác với kind theo nhóm/pool, resolve động lúc duyệt (`DepartmentManager`/`SystemAdmin`/`Permission` — VD "bất kỳ ai `position=manager` cùng phòng ban với subject employee"), nằm hẳn trong `ApprovalRequestPolicy`, không cần Approval Engine biết gì về Project/Department nội bộ.
+- **Phân biệt `APPROVED` ≠ `APPLIED`**: duyệt xong tất cả các bước (`APPROVED`) không có nghĩa thay đổi đã có hiệu lực ngay — bước áp dụng (`apply()`) có thể thất bại (VD dữ liệu đã đổi giữa lúc submit và lúc duyệt xong), khi đó request chuyển `FAILED` kèm `failure_reason` thay vì để lỗi 500 lọt ra ngoài. Chỉ khi `apply()` thành công request mới chuyển `APPLIED`.
+
+### Xây 1 workflow cụ thể trên nền Approval Engine
+
+Để thêm 1 loại request đa bước mới (VD Role Change), chỉ cần đúng 5 mảnh, không đụng vào engine core:
+
+1. **1 bảng business data riêng** (VD `role_change_requests`) — model implement interface marker `ApprovableRequest`, lưu dữ liệu đặc thù của loại request đó (VD `change_mode`, `from_role_id`, `to_role_id`).
+2. **1 class implement `ApprovalWorkflow`** (VD `RoleChangeApprovalWorkflow`) — định nghĩa `type(): WorkflowType` và `steps($request): array<ApprovalStepDefinition>`. Danh sách bước có thể khác nhau tuỳ dữ liệu request cụ thể (VD Level Promotion bỏ hẳn bước Direct Manager nếu nhân viên chưa có `manager_employee_id`).
+3. **1 class implement `ApprovedRequestHandler`** (VD `ApplyRoleChangeHandler`) — định nghĩa `apply(ApprovalRequest $approval): void`, áp dụng thay đổi thật khi đã duyệt xong bước cuối (VD tạo `assignment_role_periods` mới, không mất role cũ).
+4. **Đăng ký (tag) 2 class trên** vào `AppServiceProvider` (`$this->app->tag(RoleChangeApprovalWorkflow::class, 'approval.workflows')` và tương tự cho handler) — 2 Registry tự nhặt được qua `tagged()`, không cần sửa `ApprovalWorkflowRegistry`/`ApprovedRequestHandlerRegistry`/`ApprovalRequestService` đã có.
+5. **1 endpoint submit riêng cho loại request đó** (VD `POST /role-change-requests`) — validate + tạo bảng business data ở bước 1, rồi gọi `ApprovalRequestService::submit()` (đã có sẵn) để sinh `approval_requests` + `approval_steps`. Từ đây, duyệt/từ chối/huỷ dùng lại **nguyên** `PATCH /api/approvals/{approval}` đã build sẵn — không cần code gì thêm cho phần duyệt.
+
+`WorkflowType` (enum) đã khai sẵn 5 case đã chốt lịch triển khai (`ProjectRoleChange`, `ProjectTransfer`, `LevelPromotion`, `ProjectAssignment`, `LeaveRequest`) dù chưa có class nào implement — chỉ là nhãn, để cột `approval_requests.workflow_type` (đã cast enum) có giá trị hợp lệ ngay từ lúc xây engine. Từng bước triển khai sau lần lượt lấp đầy 4 mảnh còn lại cho đúng 1 case tại 1 thời điểm.
+
+### Luồng xử lý 1 request — các layer đi qua
+
+1. **Submit** (mỗi workflow cụ thể tự có endpoint + Controller + Service riêng, validate business rule riêng của loại đó) → gọi chung `ApprovalRequestService::submit()`, truyền vào 1 instance `ApprovalWorkflow` cụ thể → service gọi `$workflow->steps($requestable)` để sinh danh sách bước, insert `approval_requests` (status `submitted`) + `approval_steps` (bước 1 `active`, còn lại `pending`).
+2. **Duyệt/Từ chối/Huỷ** đi qua đúng 1 endpoint chung `ApprovalController::update()` bất kể loại request là gì: `Gate::authorize('update', [$approval, $type])` → `ApprovalRequestPolicy::update()`/`canActOnStep()` xác định actor có phải approver hợp lệ của bước đang active hay không → `ApprovalRequestService::approve()`/`reject()`/`cancel()` (`DB::transaction()` + `lockForUpdate()`) → `ApprovalStateMachine::ensureCanApprove()`/`ensureCanReject()`/`ensureCanCancel()` chặn hành động trên request đã resolved.
+3. **Duyệt bước cuối cùng** → request chuyển `approved` → `ApprovedRequestHandlerRegistry::get($workflowType)` tra ra đúng Handler → gọi `apply()` → thành công thì `applied`, throw exception thì bắt lại thành `failed` (kèm `failure_reason`), không để lỗi 500 lọt ra HTTP response.
+4. **Duyệt chưa phải bước cuối** → chỉ activate bước kế tiếp, request chuyển `in_review`, chưa đụng gì tới `ApprovedRequestHandler`.
+5. **Từ chối** → chấm dứt toàn bộ request (`rejected`) ngay tại bước đang active, các bước `pending` phía sau giữ nguyên, không bao giờ được activate.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Người dùng (FE)
+    participant WC as {Workflow}RequestController<br/>(VD RoleChangeRequestController — chưa triển khai)
+    participant WS as {Workflow}RequestService<br/>(business rule riêng từng loại)
+    participant AS as ApprovalRequestService<br/>(generic, dùng chung mọi loại)
+    participant WF as ApprovalWorkflow<br/>(VD RoleChangeApprovalWorkflow)
+    participant DB as Database
+    participant AC as ApprovalController<br/>(generic, đã có sẵn)
+    participant Pol as ApprovalRequestPolicy
+    participant SM as ApprovalStateMachine
+    participant Reg as ApprovedRequestHandlerRegistry
+    participant H as ApprovedRequestHandler<br/>(VD ApplyRoleChangeHandler)
+
+    Note over U,DB: === 1. Nộp yêu cầu (Submit) — mỗi workflow tự có endpoint riêng ===
+    U->>WC: POST /{workflow}-requests
+    WC->>WC: FormRequest validate + Gate::authorize('create', ...)
+    WC->>WS: create(actor, data) — validate business rule riêng loại này
+    WS->>DB: INSERT {workflow}_requests (bảng business riêng, implements ApprovableRequest)
+    WC->>AS: submit(actor, subjectEmployee, $requestable, new {Workflow}ApprovalWorkflow)
+    AS->>WF: steps($requestable) — build danh sách ApprovalStepDefinition
+    AS->>DB: INSERT approval_requests (status=submitted)
+    AS->>DB: INSERT approval_steps (bước 1=active, còn lại=pending)
+    AS-->>WC: return ApprovalRequest
+    WC-->>U: 201 Created
+
+    Note over U,H: === 2. Duyệt / Từ chối / Huỷ — 1 endpoint dùng chung cho MỌI workflow (đã có sẵn) ===
+    U->>AC: PATCH /api/approvals/{id} { type: approve|reject|cancel, comment? }
+    AC->>AC: UpdateApprovalRequest validate type
+    AC->>Pol: Gate::authorize('update', [$approval, $type])
+    Pol->>Pol: canActOnStep() - so approver_employee_id<br/>hoặc resolve theo pool (DepartmentManager/SystemAdmin/Permission)
+    AC->>AS: approve(actor, $approval, comment)
+
+    activate AS
+    AS->>DB: lockForUpdate() approval_requests + active approval_step
+    AS->>SM: ensureCanApprove($approval) - chỉ Submitted/InReview mới được duyệt
+    AS->>DB: UPDATE approval_steps SET status=approved, acted_by, acted_at
+    AS->>DB: INSERT approval_actions (action_type=approve - audit trail)
+
+    alt Còn bước tiếp theo
+        AS->>DB: UPDATE approval_steps SET status=active (bước kế)
+        AS->>DB: UPDATE approval_requests SET status=in_review, current_step_order+1
+    else Đây là bước cuối cùng
+        AS->>DB: UPDATE approval_requests SET status=approved, approved_at
+        AS->>Reg: get(workflow_type)
+        Reg-->>AS: {Workflow}ApprovedRequestHandler
+        AS->>H: apply($approval) - áp dụng thay đổi nghiệp vụ thật
+        alt apply() thành công
+            H-->>AS: void
+            AS->>DB: UPDATE approval_requests SET status=applied, applied_at
+        else apply() throw exception (VD dữ liệu đã stale)
+            H-->>AS: throws
+            AS->>DB: UPDATE approval_requests SET status=failed, failed_at, failure_reason
+        end
+    end
+    deactivate AS
+    AS-->>AC: return ApprovalRequest (kèm steps)
+    AC-->>U: 200 OK
+```
+
 ## Điểm hay / đáng chú ý
 
 - **Không xử lý import trong request** — luôn queue, tránh timeout với file lớn (tối đa 100.000 dòng/file).
@@ -436,6 +532,8 @@ stateDiagram-v2
 - `lockForUpdate()` **thay cho partial unique index**: MySQL không có unique index kiểu `WHERE end_date IS NULL` như Postgres, nên mọi ràng buộc "chỉ 1 bản ghi active tại 1 thời điểm" (PM, assignment, role period) đều enforce bằng transaction + `lockForUpdate()` ở tầng Service, không dựa vào schema.
 - `Gate::authorize('create', [Model::class, $context])`: `TaskPolicy::create()`/`TaskDelayRequestPolicy::create()` là action "create" đầu tiên trong codebase cần thêm 1 tham số context ngoài class (project/task) — dùng đúng convention chuẩn của Laravel Gate (mảng `[ClassName::class, $context]`, phần tử đầu chỉ dùng để resolve Policy rồi bị loại bỏ trước khi gọi method) thay vì nhét context vào query string hay tự chế 1 middleware riêng.
 - **Task state machine không tái dùng Approval Engine**: task xảy ra hàng ngày, tần suất cao, rủi ro thấp hơn nhiều so với các luồng phê duyệt tổ chức (promotion, transfer...) — cố tình dùng flat-status pattern giống `LeaveRequest` thay vì 1 workflow engine đa bước, tránh over-engineering cho use case tần suất cao.
+- **Approval Engine dùng Strategy + Registry thay vì `match($type)` rải rác**: thêm 1 loại request đa bước mới chỉ cần viết 2 class nhỏ (`ApprovalWorkflow`, `ApprovedRequestHandler`) rồi `tag()` vào container — không sửa `ApprovalRequestService`/`ApprovalController`/`ApprovalRequestPolicy` đã có, đúng Open/Closed Principle. Xem [Approval Engine](#approval-engine-nền-tảng-phê-duyệt-đa-bước).
+- **`APPROVED` tách riêng khỏi `APPLIED`** trong Approval Engine: duyệt xong hết các bước không đồng nghĩa thay đổi đã có hiệu lực — `apply()` có thể fail vì dữ liệu stale giữa lúc submit và lúc duyệt xong, khi đó request dừng ở `FAILED` kèm lý do thay vì để lỗi 500 lọt ra ngoài hoặc âm thầm ghi đè dữ liệu sai.
 - **Quyền PM tính động, không lưu trực tiếp trên** `employees`: "manager của project X" suy ra từ `project_managers.employee_id` + `end_date IS NULL` tại thời điểm request, không phải 1 field cố định — 1 employee có thể là PM của project này nhưng không phải PM của project khác, Policy tự kiểm tra đúng theo project đang thao tác (`$project->activeManagers()->where('employee_id', $employee->id)->exists()`).
 
 
@@ -446,7 +544,8 @@ stateDiagram-v2
 app/
 ├── Console/Commands/       # SendLeaveRequestReminders (Scheduler)
 ├── Enums/                  # ImportStatus, ImportType, ExportType, LeaveRequestStatus, NotificationReadStatus,
-│                           # ActiveStatus, EmployeeStatus, ProjectStatus, ProjectAssignmentStatus, TaskStatus, TaskDelayRequestStatus
+│                           # ActiveStatus, EmployeeStatus, ProjectStatus, ProjectAssignmentStatus, TaskStatus, TaskDelayRequestStatus,
+│                           # ApprovalStatus, ApprovalStepStatus, ApprovalActionType, ApproverKind, WorkflowType
 ├── Events/                 # LeaveRequestSubmitted, LeaveRequestReviewed
 ├── Listeners/              # SendLeaveRequestSubmittedNotification, SendLeaveRequestReviewedNotification
 ├── Notifications/          # LeaveRequestSubmitted, LeaveRequestReviewed, LeaveRequestReminder
@@ -454,15 +553,16 @@ app/
 │   ├── Controllers/Api/V1/ # AuthController, DepartmentController, EmployeeController, LeaveRequestController, NotificationController,
 │   │                       # ImportController, ExportController, LevelController, ProjectController, ProjectRoleController,
 │   │                       # ProjectManagerController, ProjectAssignmentController, AssignmentRolePeriodController, ProjectMemberController,
-│   │                       # TaskController, TaskCommentController, TaskDelayRequestController
+│   │                       # TaskController, TaskCommentController, TaskDelayRequestController, ApprovalController
 │   ├── Requests/           # Form Request validation theo từng nghiệp vụ (Import/, Export/, Notification/, Project/, ProjectAssignment/,
-│   │                       # Task/, TaskComment/, TaskDelayRequest/, ...)
+│   │                       # Task/, TaskComment/, TaskDelayRequest/, Approval/, ...)
 │   └── Resources/          # API Resource transformer (1 thư mục con / resource, mirror Requests/)
 ├── Jobs/Import/            # ProcessImportJob, ImportChunkJob
 ├── Models/                 # Department, Employee, LeaveRequest, Import, ImportError, Level, Project, ProjectRole, ProjectManager,
-│                           # ProjectAssignment, AssignmentRolePeriod, Task, TaskComment, TaskDelayRequest
+│                           # ProjectAssignment, AssignmentRolePeriod, Task, TaskComment, TaskDelayRequest,
+│                           # ApprovalRequest, ApprovalStep, ApprovalAction
 ├── Policies/                # DepartmentPolicy, EmployeePolicy, LevelPolicy, ImportPolicy, LeaveRequestPolicy,
-│                            # ProjectPolicy, ProjectRolePolicy, TaskPolicy, TaskDelayRequestPolicy
+│                            # ProjectPolicy, ProjectRolePolicy, TaskPolicy, TaskDelayRequestPolicy, ApprovalRequestPolicy
 └── Services/
     ├── AuthService.php
     ├── DepartmentService.php
@@ -473,10 +573,13 @@ app/
     ├── ProjectManagerGuard.php + ProjectManagerGuardService.php     # contract xuyên module (Organization ← Project Assignment)
     ├── ProjectAssignmentCloser.php + ProjectAssignmentCloserService.php
     ├── TaskService.php / TaskCommentService.php / TaskDelayRequestService.php
+    ├── ApprovalRequestService.php     # submit/approve/reject/cancel - generic, dùng chung mọi workflow
     ├── ImportService.php
     ├── ExportService.php
     ├── Import/              # CsvReader, ImportStrategyResolver, AbstractImportHandler, Handlers/
-    └── Export/              # ExportStrategyResolver, AbstractExportHandler, Handlers/
+    ├── Export/              # ExportStrategyResolver, AbstractExportHandler, Handlers/
+    └── Approval/             # ApprovalWorkflowRegistry, ApprovedRequestHandlerRegistry, ApprovalStateMachine,
+                               # ApprovalStepDefinition, Contracts/ (ApprovalWorkflow, ApprovedRequestHandler, ApprovableRequest)
 fe/vite-project/            # SPA React + Vite (giao diện người dùng)
 │                           # đã có UI cho Department/Employee/Level/Project/Assignment/Work-history;
 │                           # UI cho Task Management (Phase C.5) chưa triển khai
