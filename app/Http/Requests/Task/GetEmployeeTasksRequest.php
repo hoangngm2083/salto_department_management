@@ -26,6 +26,8 @@ class GetEmployeeTasksRequest extends FormRequest
     {
         return [
             'status' => ['nullable', 'string', Rule::enum(TaskStatus::class)],
+            'sort' => ['nullable', 'string', Rule::in(['due_date', 'created_at'])],
+            'direction' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'cursor' => ['nullable', 'string'],
         ];

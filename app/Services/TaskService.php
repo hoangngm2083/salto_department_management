@@ -26,14 +26,25 @@ class TaskService
 
     /**
      * Get paginated tasks assigned to a specific employee ("my tasks"), across all their projects.
+     * Defaults to `orderBy('id', 'desc')` when no sort is given, matching every existing caller
+     * (EmployeeTasksPanel, DashboardTaskSummary) - `sort`/`direction` are additive, opt-in only.
      */
     public function getPaginatedForEmployee(Employee $employee, array $data): CursorPaginator
     {
-        return $employee->tasks()
+        $sort = $data['sort'] ?? 'id';
+        $direction = $data['direction'] ?? ($sort === 'id' ? 'desc' : 'asc');
+
+        $query = $employee->tasks()
             ->with(['project:id,name,slug', 'creator:id,name', 'reviewer:id,name'])
-            ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
-            ->orderBy('id', 'desc')
-            ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
+            ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+            ->orderBy($sort, $direction);
+
+        if ($sort !== 'id') {
+            // Tie-breaker so cursor pagination stays stable across rows sharing the same sort value.
+            $query->orderBy('id', 'desc');
+        }
+
+        return $query->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
     }
 
     /**
