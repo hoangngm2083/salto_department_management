@@ -6,6 +6,7 @@ use App\Enums\ProjectAssignmentStatus;
 use App\Enums\ProjectStatus;
 use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -58,6 +59,20 @@ class Project extends Model
     public function activeManagers(): HasMany
     {
         return $this->managers()->whereNull('end_date');
+    }
+
+    /**
+     * Projects the given employee is currently an active manager of - shared
+     * by `ProjectService::getPaginated()`'s `manager_employee_id` filter and
+     * `getManagedByEmployee()`, which independently duplicated this same
+     * `whereHas('activeManagers', ...)` clause before this was extracted.
+     *
+     * @param  Builder<Project>  $query
+     * @return Builder<Project>
+     */
+    public function scopeManagedBy(Builder $query, int $employeeId): Builder
+    {
+        return $query->whereHas('activeManagers', fn ($managers) => $managers->where('employee_id', $employeeId));
     }
 
     /**

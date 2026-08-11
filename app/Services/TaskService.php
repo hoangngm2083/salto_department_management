@@ -6,6 +6,7 @@ use App\Enums\TaskStatus;
 use App\Models\Employee;
 use App\Models\Project;
 use App\Models\Task;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\CursorPaginator;
 
 class TaskService
@@ -33,6 +34,27 @@ class TaskService
             ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->orderBy('id', 'desc')
             ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
+    }
+
+    /**
+     * Overdue tasks (top 10, soonest-due first) across every project the given employee actively
+     * manages - the dashboard "task quá hạn cần xử lý" widget (mục 7.4), so a PM sees what's
+     * trailing without opening each project's board individually. Mirrors
+     * `ProjectService::getManagedByEmployee()`'s join through `activeManagers`.
+     *
+     * @return Collection<int, Task>
+     */
+    public function getOverdueForManagedProjects(Employee $employee): Collection
+    {
+        return Task::query()
+            ->whereHas('project.activeManagers', fn ($query) => $query->where('employee_id', $employee->id))
+            ->whereNotIn('status', [TaskStatus::Done, TaskStatus::Cancelled])
+            ->whereNotNull('due_date')
+            ->where('due_date', '<', today())
+            ->with(['project:id,name,slug', 'assignee:id,name'])
+            ->orderBy('due_date')
+            ->limit(10)
+            ->get();
     }
 
     /**

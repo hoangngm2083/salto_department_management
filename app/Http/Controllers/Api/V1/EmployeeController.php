@@ -10,10 +10,13 @@ use App\Http\Requests\Task\GetEmployeeTasksRequest;
 use App\Http\Resources\Employee\EmployeeCollection;
 use App\Http\Resources\Employee\EmployeeResource;
 use App\Http\Resources\Employee\EmployeeWorkHistoryResource;
+use App\Http\Resources\Project\ProjectResource;
 use App\Http\Resources\Task\TaskCollection;
+use App\Http\Resources\Task\TaskResource;
 use App\Models\Employee;
 use App\Services\EmployeeService;
 use App\Services\ProjectAssignmentService;
+use App\Services\ProjectService;
 use App\Services\TaskService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
@@ -23,6 +26,7 @@ class EmployeeController extends Controller
     public function __construct(
         private readonly EmployeeService $employeeService,
         private readonly ProjectAssignmentService $projectAssignmentService,
+        private readonly ProjectService $projectService,
         private readonly TaskService $taskService,
     ) {
         //
@@ -130,6 +134,38 @@ class EmployeeController extends Controller
         return $this->successResponse(
             new TaskCollection($tasks),
             'Employee tasks retrieved successfully.'
+        );
+    }
+
+    /**
+     * Display the projects the employee is currently an active manager of,
+     * with progress counts - the dashboard "project tôi quản lý" widget
+     * (plan mục 9.1), open to any employee since project managers aren't
+     * restricted to the `manager` system role.
+     */
+    public function managedProjects(Employee $employee): JsonResponse
+    {
+        Gate::authorize('view', $employee);
+        $projects = $this->projectService->getManagedByEmployee($employee);
+
+        return $this->successResponse(
+            ProjectResource::collection($projects),
+            'Employee managed projects retrieved successfully.'
+        );
+    }
+
+    /**
+     * Display overdue tasks (top 10) across every project the employee is currently an active
+     * manager of - the dashboard "task quá hạn cần xử lý" widget (mục 7.4), mirrors managedProjects().
+     */
+    public function overdueManagedTasks(Employee $employee): JsonResponse
+    {
+        Gate::authorize('view', $employee);
+        $tasks = $this->taskService->getOverdueForManagedProjects($employee);
+
+        return $this->successResponse(
+            TaskResource::collection($tasks),
+            'Employee managed overdue tasks retrieved successfully.'
         );
     }
 }

@@ -39,3 +39,15 @@ export async function getEmployeeTasks(id, params) {
 
   return data.data;
 }
+
+export async function getEmployeeManagedProjects(id) {
+  const { data } = await http.get(`/employees/${id}/managed-projects`);
+
+  return data.data;
+}
+
+export async function getEmployeeOverdueManagedTasks(id) {
+  const { data } = await http.get(`/employees/${id}/overdue-tasks`);
+
+  return data.data;
+}

@@ -27,6 +27,10 @@ class GetProjectsRequest extends FormRequest
         return [
             'status' => ['nullable', Rule::enum(ProjectStatus::class)],
             'manager_employee_id' => ['nullable', 'integer', Rule::exists('employees', 'id')],
+            // Opt-in only: attaching task-progress counts to every row would N+1 the common
+            // case (mục 7.9 chose loadCount() on show() alone for that reason) - a caller that
+            // actually needs them (dashboard "dự án cần chú ý") asks for them explicitly.
+            'with_counts' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'cursor' => ['nullable', 'string'],
         ];

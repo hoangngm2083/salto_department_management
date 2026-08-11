@@ -56,6 +56,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('abilities:employees:read');
     Route::get('employees/{employee}/tasks', [EmployeeController::class, 'tasks'])
         ->middleware('abilities:tasks:read');
+    Route::get('employees/{employee}/managed-projects', [EmployeeController::class, 'managedProjects'])
+        ->middleware('abilities:employees:read');
+    Route::get('employees/{employee}/overdue-tasks', [EmployeeController::class, 'overdueManagedTasks'])
+        ->middleware('abilities:tasks:read');
 
     Route::apiResource('projects', ProjectController::class)
         ->scoped(['project' => 'slug'])
