@@ -15,6 +15,7 @@ use App\Services\Approval\ApprovalStateMachine;
 use App\Services\Approval\ApprovedRequestHandlerRegistry;
 use App\Services\Approval\Contracts\ApprovableRequest;
 use App\Services\Approval\Contracts\ApprovalWorkflow;
+use App\Services\Approval\EmptyApprovalWorkflow;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -98,9 +99,11 @@ class ApprovalRequestService
                 $firstStep ??= $step;
             }
 
-            if ($firstStep !== null) {
-                ApprovalStepActivated::dispatch($approval, $firstStep);
+            if ($firstStep === null) {
+                throw new EmptyApprovalWorkflow($workflow->type());
             }
+
+            ApprovalStepActivated::dispatch($approval, $firstStep);
 
             return $approval->fresh(['steps']);
         });

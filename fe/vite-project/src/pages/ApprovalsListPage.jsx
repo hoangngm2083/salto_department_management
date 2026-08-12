@@ -7,8 +7,8 @@ import { APPROVAL_STATUS_BADGE_CLASSES, APPROVAL_STATUS_LABELS } from '../lib/ap
 import { WORKFLOW_TYPE_LABELS } from '../lib/workflow-type';
 
 const TABS = [
-  { key: 'mine', label: 'Yêu cầu của tôi', params: { mine: 1 } },
   { key: 'pending', label: 'Chờ tôi duyệt', params: { pending_my_approval: 1 } },
+  { key: 'mine', label: 'Yêu cầu của tôi', params: { mine: 1 } },
 ];
 
 /**
@@ -18,7 +18,7 @@ const TABS = [
  * dedicated role-change-requests index endpoint.
  */
 export default function ApprovalsListPage() {
-  const [tab, setTab] = useState('mine');
+  const [tab, setTab] = useState('pending');
   const [selectedId, setSelectedId] = useState(null);
 
   const activeTab = TABS.find((t) => t.key === tab);

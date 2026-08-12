@@ -78,8 +78,17 @@ class ApprovalController extends Controller
             'cancel' => $this->approvalRequestService->cancel($actor, $approval, $comment),
         };
 
+        // steps is already fresh-loaded by every branch above; only the relations the
+        // resource actually needs on top of that are genuinely missing.
+        $approval->loadMissing([
+            'requester:id,name',
+            'subjectEmployee:id,name',
+            'steps.approverEmployee:id,name',
+            'steps.actor:id,name',
+        ]);
+
         return $this->successResponse(
-            new ApprovalRequestResource($approval->load('steps')),
+            new ApprovalRequestResource($approval),
             'Approval request updated successfully.'
         );
     }

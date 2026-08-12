@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { getApproval, updateApproval } from '../api/approvals';
 import { getRoleChangeRequest } from '../api/roleChangeRequests';
 import { useAuth } from '../context/useAuth';
+import useAsyncResource from '../hooks/useAsyncResource';
 import {
   APPROVAL_STATUS_BADGE_CLASSES,
   APPROVAL_STATUS_LABELS,
@@ -31,28 +32,30 @@ const ACTION_MESSAGES = {
  */
 export default function ApprovalDetailModal({ approvalId, onClose, onChanged }) {
   const { user } = useAuth();
+
+  // Chained fetch (approval, then its role-change business detail if applicable) behind the
+  // same requestIdRef staleness guard used by useCursorList - a slow response for a
+  // previously-opened approvalId can never overwrite what's on screen for the current one.
+  const { data, loading } = useAsyncResource({
+    fetcher: () =>
+      getApproval(approvalId).then(async (approval) => ({
+        approval,
+        roleChangeRequest:
+          approval.workflow_type === 'project_role_change' ? await getRoleChangeRequest(approval.requestable_id) : null,
+      })),
+    deps: [approvalId],
+  });
+
   const [approval, setApproval] = useState(null);
-  const [roleChangeRequest, setRoleChangeRequest] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState('');
   const [acting, setActing] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting view state before an external fetch, per React's documented data-fetching pattern
-    setLoading(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the fetched resource into local state that handleAction() then patches in place after approve/reject/cancel, without waiting for a refetch
+    setApproval(data?.approval ?? null);
+  }, [data]);
 
-    getApproval(approvalId)
-      .then((data) => {
-        setApproval(data);
-
-        if (data.workflow_type === 'project_role_change') {
-          return getRoleChangeRequest(data.requestable_id).then(setRoleChangeRequest);
-        }
-
-        return undefined;
-      })
-      .finally(() => setLoading(false));
-  }, [approvalId]);
+  const roleChangeRequest = data?.roleChangeRequest ?? null;
 
   async function handleAction(type) {
     setActing(true);
@@ -91,7 +94,7 @@ export default function ApprovalDetailModal({ approvalId, onClose, onChanged }) 
           </button>
         </div>
 
-        {loading && <p className="text-sm text-gray-500">Đang tải...</p>}
+        {loading && <ApprovalDetailSkeleton />}
 
         {!loading && approval && (
           <>
@@ -205,6 +208,42 @@ export default function ApprovalDetailModal({ approvalId, onClose, onChanged }) 
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Reserves roughly the same footprint as the loaded detail block + step timeline, so the
+ * fixed/centered modal overlay doesn't visibly reflow around the user's cursor once the
+ * fetch resolves.
+ */
+function ApprovalDetailSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="mb-4 rounded-md border border-gray-200 p-3">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="h-4 w-32 rounded bg-gray-200" />
+          <div className="h-4 w-16 rounded-full bg-gray-200" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-3 w-3/4 rounded bg-gray-100" />
+          <div className="h-3 w-1/2 rounded bg-gray-100" />
+          <div className="h-3 w-2/3 rounded bg-gray-100" />
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-2 h-3 w-20 rounded bg-gray-200" />
+        <div className="space-y-2">
+          <div className="h-10 rounded-md border border-gray-100 bg-gray-50" />
+          <div className="h-10 rounded-md border border-gray-100 bg-gray-50" />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <div className="h-8 w-20 rounded-md bg-gray-100" />
+        <div className="h-8 w-20 rounded-md bg-gray-100" />
       </div>
     </div>
   );
