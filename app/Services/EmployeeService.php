@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\EmployeeStatus;
 use App\Models\Employee;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\CursorPaginator;
 use Illuminate\Validation\ValidationException;
 
@@ -39,11 +40,34 @@ class EmployeeService
      */
     public function getPaginated(array $data): CursorPaginator
     {
+        return $this->filteredQuery($data)
+            ->select(['id', 'department_id', 'current_level_id', 'manager_employee_id', 'name', 'email', 'birthday', 'position', 'status', 'created_at', 'updated_at'])
+            ->with(['department:id,name,slug', 'currentLevel:id,name,slug', 'manager:id,name'])
+            ->orderBy('id', 'desc')
+            ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
+    }
+
+    /**
+     * Count employees matching the same filters as `getPaginated()`, without
+     * paying for the full resource payload - the dashboard "Nhân viên" stat
+     * (mục 9.1) only ever needed a number, not 100 employee records.
+     */
+    public function count(array $data): int
+    {
+        return $this->filteredQuery($data)->count();
+    }
+
+    /**
+     * Filter chain shared by `getPaginated()` and `count()`.
+     *
+     * @param  array<string, mixed>  $data
+     * @return Builder<Employee>
+     */
+    private function filteredQuery(array $data): Builder
+    {
         $positions = $data['position'] ?? null;
 
         return Employee::query()
-            ->select(['id', 'department_id', 'current_level_id', 'manager_employee_id', 'name', 'email', 'birthday', 'position', 'status', 'created_at', 'updated_at'])
-            ->with(['department:id,name,slug', 'currentLevel:id,name,slug', 'manager:id,name'])
             ->when($data['name'] ?? null, fn ($query, $name) => $query->nameContains($name))
             ->when($data['department_id'] ?? null, fn ($query, $departmentId) => $query->where('department_id', $departmentId))
             ->when($data['department_slug'] ?? null, fn ($query, $slug) => $query->whereRelation('department', 'slug', $slug))
@@ -52,9 +76,7 @@ class EmployeeService
                 ! empty($positions),
                 fn ($query) => $query->whereIn('position', (array) $positions),
                 fn ($query) => $query->where('position', '!=', 'admin')
-            )
-            ->orderBy('id', 'desc')
-            ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
+            );
     }
 
     /**

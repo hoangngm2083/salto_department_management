@@ -47,6 +47,20 @@ class EmployeeController extends Controller
     }
 
     /**
+     * Count employees matching the same filters as `index()` - the dashboard
+     * "Nhân viên" stat (mục 9.1) only needs a number.
+     */
+    public function count(GetEmployeesRequest $request): JsonResponse
+    {
+        Gate::authorize('viewAny', Employee::class);
+
+        return $this->successResponse(
+            ['total' => $this->employeeService->count($request->validated())],
+            'Employee count retrieved successfully.'
+        );
+    }
+
+    /**
      * Store a newly created resource in storage.
      */
     public function store(UpsertEmployeeRequest $request): JsonResponse

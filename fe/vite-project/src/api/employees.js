@@ -6,6 +6,12 @@ export async function listEmployees(params) {
   return data.data;
 }
 
+export async function countEmployees(params) {
+  const { data } = await http.get('/employees/count', { params });
+
+  return data.data;
+}
+
 export async function getEmployee(id) {
   const { data } = await http.get(`/employees/${id}`);
 

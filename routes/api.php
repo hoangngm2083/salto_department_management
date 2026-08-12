@@ -47,6 +47,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('update', 'abilities:levels:update')
         ->middlewareFor('destroy', 'abilities:levels:delete');
 
+    Route::get('employees/count', [EmployeeController::class, 'count'])
+        ->middleware('abilities:employees:read');
+
     Route::apiResource('employees', EmployeeController::class)
         ->middlewareFor('index', 'abilities:employees:read')
         ->middlewareFor('show', 'abilities:employees:read')

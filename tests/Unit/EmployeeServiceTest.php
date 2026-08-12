@@ -103,6 +103,35 @@ test('getEmployees_status_matchingEmployees', function () {
         ->and($result->items()[0]->status)->toBe(EmployeeStatus::Active);
 });
 
+test('countEmployees_emptyPosition_adminExcluded', function () {
+    // Arrange
+    Employee::factory()->create(['position' => 'employee']);
+    Employee::factory()->create(['position' => 'manager']);
+    Employee::factory()->create(['position' => 'admin']);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $total = $service->count([]);
+
+    // Assert
+    expect($total)->toBe(2);
+});
+
+test('countEmployees_departmentId_matchingTotal', function () {
+    // Arrange
+    $department = Department::factory()->create();
+    $otherDepartment = Department::factory()->create();
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
+    Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
+    $service = app(EmployeeService::class);
+
+    // Act
+    $total = $service->count(['department_id' => $department->id]);
+
+    // Assert
+    expect($total)->toBe(1);
+});
+
 test('upsertEmployee_validData_employeeCreated', function () {
     // Arrange
     $department = Department::factory()->create();
