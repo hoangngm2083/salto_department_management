@@ -15,6 +15,9 @@ class TaskDelayRequestService
 {
     /**
      * Get paginated delay requests, flat top-level, filtered by task/status.
+     * `managed_by` (a manager actor) scopes to requests on tasks whose
+     * project they actively manage, plus any request they submitted
+     * themselves - see `GetTaskDelayRequestsRequest::prepareForValidation()`.
      */
     public function getPaginated(array $data): CursorPaginator
     {
@@ -23,6 +26,10 @@ class TaskDelayRequestService
             ->when($data['task_id'] ?? null, fn ($query, $taskId) => $query->where('task_id', $taskId))
             ->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($data['requested_by'] ?? null, fn ($query, $requestedBy) => $query->where('requested_by', $requestedBy))
+            ->when($data['managed_by'] ?? null, fn ($query, $managerId) => $query->where(
+                fn ($scoped) => $scoped->whereHas('task.project', fn ($project) => $project->managedBy($managerId))
+                    ->orWhere('requested_by', $managerId)
+            ))
             ->orderBy('id', 'desc')
             ->cursorPaginate($data['per_page'] ?? config('pagination.default_per_page'));
     }

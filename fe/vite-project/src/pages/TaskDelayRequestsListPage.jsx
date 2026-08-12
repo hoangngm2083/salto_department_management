@@ -16,17 +16,15 @@ const STATUS_TOAST_MESSAGES = {
 // UpdateTaskDelayRequestStatusRequest only allows approved/rejected/cancelled
 // (no reverting to pending), unlike leave-requests.
 const ADMIN_ACTIONABLE_STATUSES = ['approved', 'rejected', 'cancelled'];
+const REVIEWER_ACTIONABLE_STATUSES = ['approved', 'rejected'];
 
 /**
  * Flat top-level list, mirroring LeaveRequestsListPage (mục 5: "giống hệt
- * leave-requests"). Unlike leave-requests, a manager here sees every pending
- * request across every project (list isn't scoped to "their own" - see
- * GetTaskDelayRequestsRequest / mục 7.9), so this only exposes
- * approve/reject to admin (who bypasses every project-manager check via
- * before()) to avoid showing a manager a button that would 403 for a
- * project they don't manage. A manager reviews their own project's
- * requests from that task's detail modal on the project board instead,
- * where the PM check is computed correctly per-project.
+ * leave-requests"). GetTaskDelayRequestsRequest scopes a manager to requests
+ * on projects they actively manage plus any request they submitted
+ * themselves, so every row a manager sees here is one they have authority
+ * over - approve/reject shows for rows on their managed project(s), cancel
+ * shows for rows they submitted themselves.
  */
 export default function TaskDelayRequestsListPage() {
   const { user } = useAuth();
@@ -67,9 +65,11 @@ export default function TaskDelayRequestsListPage() {
   /**
    * Which statuses `request` may be moved to by the current actor - only
    * ever non-empty while still pending. Admin may approve/reject/cancel any
-   * request; the requester may only cancel their own. A manager reviews
-   * their own project's requests from the task's detail modal instead (see
-   * the module docblock), so they get no options here even if `canReview`.
+   * request. A manager may approve/reject a request on a project they
+   * manage (every non-self row a manager sees here is one, per the backend
+   * scoping - see the module docblock); the requester may only cancel their
+   * own, whether that requester is an employee or a manager reviewing
+   * someone else's tasks elsewhere.
    */
   function getAvailableStatuses(request) {
     if (request.status !== 'pending') {
@@ -80,11 +80,17 @@ export default function TaskDelayRequestsListPage() {
       return ADMIN_ACTIONABLE_STATUSES;
     }
 
-    if (request.requested_by === user.id) {
-      return ['cancelled'];
+    const actions = [];
+
+    if (canReview && request.requested_by !== user.id) {
+      actions.push(...REVIEWER_ACTIONABLE_STATUSES);
     }
 
-    return [];
+    if (request.requested_by === user.id) {
+      actions.push('cancelled');
+    }
+
+    return actions;
   }
 
   return (

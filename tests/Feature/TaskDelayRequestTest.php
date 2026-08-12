@@ -179,6 +179,7 @@ test('getDelayRequests_taskIdFilter_matchingReturned', function () {
     TaskDelayRequest::factory()->count(2)->create(['task_id' => $task->id]);
     TaskDelayRequest::factory()->create();
     $manager = Employee::factory()->create(['position' => 'manager', 'status' => 'active']);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $manager->id, 'end_date' => null]);
     Sanctum::actingAs($manager, ['task-delay-requests:read']);
 
     // Act
@@ -187,6 +188,35 @@ test('getDelayRequests_taskIdFilter_matchingReturned', function () {
     // Assert
     $response->assertSuccessful();
     expect($response->json('data.data'))->toHaveCount(2);
+});
+
+test('getDelayRequests_managerActor_scopedToManagedProjectsPlusOwnRequests', function () {
+    // Arrange
+    $manager = Employee::factory()->create(['position' => 'manager', 'status' => 'active']);
+
+    $managedProject = Project::factory()->create();
+    ProjectManager::factory()->create(['project_id' => $managedProject->id, 'employee_id' => $manager->id, 'end_date' => null]);
+    $managedTask = Task::factory()->create(['project_id' => $managedProject->id]);
+    $managedRequest = TaskDelayRequest::factory()->create(['task_id' => $managedTask->id]);
+
+    $ownProject = Project::factory()->create();
+    $ownTask = Task::factory()->create(['project_id' => $ownProject->id, 'assigned_to' => $manager->id]);
+    $ownRequest = TaskDelayRequest::factory()->create(['task_id' => $ownTask->id, 'requested_by' => $manager->id]);
+
+    $foreignProject = Project::factory()->create();
+    $foreignTask = Task::factory()->create(['project_id' => $foreignProject->id]);
+    TaskDelayRequest::factory()->create(['task_id' => $foreignTask->id]);
+
+    Sanctum::actingAs($manager, ['task-delay-requests:read']);
+
+    // Act
+    $response = $this->getJson('/api/task-delay-requests');
+
+    // Assert
+    $response->assertSuccessful();
+    $ids = collect($response->json('data.data'))->pluck('id');
+    expect($ids)->toHaveCount(2)
+        ->and($ids)->toContain($managedRequest->id, $ownRequest->id);
 });
 
 test('getDelayRequests_employeeActor_scopedToOwnRequests', function () {
