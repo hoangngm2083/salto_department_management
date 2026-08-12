@@ -1,6 +1,6 @@
 {
     "agents": [
-        "antigravity"
+        "claude"
     ],
     "cloud": false,
     "guidelines": true,

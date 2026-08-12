@@ -1,0 +1,89 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import { useAuth } from './context/useAuth';
+import { roleHomePath } from './lib/role-redirect';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import MePage from './pages/MePage';
+import EmployeeProfilePage from './pages/EmployeeProfilePage';
+import DepartmentsListPage from './pages/DepartmentsListPage';
+import DepartmentDetailPage from './pages/DepartmentDetailPage';
+import EmployeesListPage from './pages/EmployeesListPage';
+import ApprovalsListPage from './pages/ApprovalsListPage';
+import LevelsListPage from './pages/LevelsListPage';
+import MyProjectsPage from './pages/MyProjectsPage';
+import MyTasksPage from './pages/MyTasksPage';
+import ProjectsListPage from './pages/ProjectsListPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
+import ProjectRolesListPage from './pages/ProjectRolesListPage';
+import StatusPage from './pages/StatusPage';
+import TaskDelayRequestsListPage from './pages/TaskDelayRequestsListPage';
+
+function HomeRedirect() {
+  const { user } = useAuth();
+
+  return <Navigate to={roleHomePath(user)} replace />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route element={<Layout />}>
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/me" element={<MePage />} />
+          <Route path="/employees/:id" element={<EmployeeProfilePage />} />
+          <Route path="/task-delay-requests" element={<TaskDelayRequestsListPage />} />
+          <Route path="/approvals" element={<ApprovalsListPage />} />
+          <Route path="/my-tasks" element={<MyTasksPage />} />
+          <Route path="/my-projects" element={<MyProjectsPage />} />
+          {/* Open to every authenticated role - ProjectPolicy::view allows a plain
+              employee onto a project they have (or had) an assignment on, read-only.
+              The list at /projects stays admin/manager-only below. */}
+          <Route path="/projects/:slug" element={<ProjectDetailPage />} />
+          <Route
+            path="/403"
+            element={
+              <StatusPage
+                code={403}
+                title="Không có quyền truy cập"
+                message="Bạn không có quyền xem nội dung này."
+              />
+            }
+          />
+          <Route
+            path="/404"
+            element={
+              <StatusPage
+                code={404}
+                title="Không tìm thấy"
+                message="Nội dung bạn tìm không tồn tại hoặc đã bị xoá."
+              />
+            }
+          />
+
+          <Route element={<ProtectedRoute roles={['admin']} />}>
+            <Route path="/departments" element={<DepartmentsListPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={['admin', 'manager']} />}>
+            <Route path="/departments/:slug" element={<DepartmentDetailPage />} />
+            <Route path="/employees" element={<EmployeesListPage />} />
+            <Route path="/levels" element={<LevelsListPage />} />
+            <Route path="/projects" element={<ProjectsListPage />} />
+            <Route path="/project-roles" element={<ProjectRolesListPage />} />
+          </Route>
+
+          {/* Matches any unmatched URL under this pathless layout tree - ProtectedRoute
+              above still gates it first, so an unauthenticated visitor is bounced to
+              /login same as any other route; an authenticated one lands on 404. */}
+          <Route path="*" element={<Navigate to="/404" replace />} />
+        </Route>
+      </Route>
+    </Routes>
+  );
+}

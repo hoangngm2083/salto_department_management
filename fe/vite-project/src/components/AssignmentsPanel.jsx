@@ -1,0 +1,411 @@
+import { useState } from 'react';
+import { toast } from 'sonner';
+import {
+  addAssignmentRole,
+  createProjectAssignment,
+  endAssignmentRole,
+  endProjectAssignment,
+  listProjectAssignments,
+} from '../api/projectAssignments';
+import { listProjectRoles } from '../api/projectRoles';
+import { useAuth } from '../context/useAuth';
+import useAsyncResource from '../hooks/useAsyncResource';
+import useCursorList from '../hooks/useCursorList';
+import { getTimelineRange, getZoomedRange } from '../lib/timeline';
+import EmployeeMultiSelect from './EmployeeMultiSelect';
+import Pager from './Pager';
+import ProjectRoleMultiSelect from './ProjectRoleMultiSelect';
+import RoleChangeRequestModal from './RoleChangeRequestModal';
+import { TimelineRow, TimelineTable, TimelineTableHeader, TimelineZoomControls } from './Timeline';
+
+/**
+ * "Members" tab of a project's detail page: every assignment (active and
+ * past) rendered as a timeline row, and within each, the role period(s)
+ * currently held. Ending an assignment or a role period is immediate
+ * (today) - unlike project managers there's no "must always have >= 1
+ * active role" invariant, so ending the last role is allowed.
+ *
+ * Takes `slug` directly (known synchronously from the route) rather than
+ * waiting on `project` so it fetches in parallel with the parent's own
+ * `getProject()` call - `project` is only used for the timeline's optional
+ * start/end bounds, and is `null` on the first render.
+ */
+export default function AssignmentsPanel({ slug, project, canManage }) {
+  const { items: assignments, meta, loading, refreshing, goToNext, goToPrev, refresh } =
+    useCursorList({
+      fetcher: (params) => listProjectAssignments(slug, params),
+      params: {},
+    });
+
+  // Shared by every row's "add role" flow and the role-change request modal - fetched once
+  // per panel mount instead of once per open, since the active project-roles list is the
+  // same for all of them.
+  const { data: activeRolesResponse, loading: rolesLoading } = useAsyncResource({
+    fetcher: () => listProjectRoles({ status: 'active', per_page: 100 }),
+  });
+  const activeRoleOptions = activeRolesResponse?.data ?? [];
+
+  const { start: overallStart, end: overallEnd } = getTimelineRange({
+    boundStart: project?.start_date,
+    boundEnd: project?.end_date,
+    periods: assignments,
+  });
+
+  const [zoomMonths, setZoomMonths] = useState(null);
+
+  const { start: rangeStart, end: rangeEnd } = zoomMonths
+    ? getZoomedRange(overallStart, overallEnd, zoomMonths)
+    : { start: overallStart, end: overallEnd };
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [newEmployees, setNewEmployees] = useState([]);
+  const [newRoleIds, setNewRoleIds] = useState([]);
+  const [newStartDate, setNewStartDate] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const [endingId, setEndingId] = useState(null);
+
+  function cancelAdd() {
+    setShowAdd(false);
+    setNewEmployees([]);
+    setNewRoleIds([]);
+    setNewStartDate('');
+  }
+
+  async function handleAdd() {
+    if (newEmployees.length === 0 || newRoleIds.length === 0) {
+      return;
+    }
+
+    setAdding(true);
+
+    try {
+      await createProjectAssignment(slug, {
+        employee_ids: newEmployees.map((employee) => employee.id),
+        role_ids: newRoleIds,
+        start_date: newStartDate || undefined,
+      });
+      toast.success(
+        newEmployees.length > 1
+          ? 'Thêm các thành viên vào dự án thành công.'
+          : 'Thêm thành viên vào dự án thành công.'
+      );
+      cancelAdd();
+      refresh();
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleEnd(assignment) {
+    if (
+      !window.confirm(`Kết thúc sự tham gia của "${assignment.employee_name}" trong dự án này?`)
+    ) {
+      return;
+    }
+
+    setEndingId(assignment.id);
+
+    try {
+      await endProjectAssignment(slug, assignment.id);
+      toast.success('Đã kết thúc sự tham gia của thành viên.');
+      refresh();
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setEndingId(null);
+    }
+  }
+
+  async function handleEndRole(assignment, rolePeriod) {
+    if (!window.confirm(`Kết thúc vai trò "${rolePeriod.project_role_name}"?`)) {
+      return;
+    }
+
+    try {
+      await endAssignmentRole(slug, assignment.id, rolePeriod.id);
+      toast.success('Đã kết thúc vai trò.');
+      refresh();
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    }
+  }
+
+  async function handleAddRole(assignment, roleId) {
+    await addAssignmentRole(slug, assignment.id, roleId);
+    toast.success('Đã thêm vai trò.');
+    refresh();
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-medium text-gray-900">Thành viên dự án</h2>
+          {assignments.length > 0 && <TimelineZoomControls value={zoomMonths} onChange={setZoomMonths} />}
+        </div>
+        {canManage && !showAdd && (
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Thêm thành viên
+          </button>
+        )}
+      </div>
+
+      {canManage && showAdd && (
+        <div className="mb-4 space-y-3 rounded-md border border-gray-200 p-3">
+          <div>
+            <span className="mb-1 block text-xs font-medium text-gray-700">Nhân viên</span>
+            <EmployeeMultiSelect selected={newEmployees} onChange={setNewEmployees} />
+          </div>
+
+          <div>
+            <span className="mb-1 block text-xs font-medium text-gray-700">Vai trò</span>
+            <ProjectRoleMultiSelect selected={newRoleIds} onChange={setNewRoleIds} />
+          </div>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-gray-700">
+              Ngày bắt đầu (để trống = hôm nay)
+            </span>
+            <input
+              type="date"
+              value={newStartDate}
+              onChange={(e) => setNewStartDate(e.target.value)}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            />
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={cancelAdd}
+              disabled={adding}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-100"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={adding || newEmployees.length === 0 || newRoleIds.length === 0}
+              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
+            >
+              {adding ? 'Đang thêm...' : 'Thêm'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading && <p className="py-2 text-sm text-gray-500">Đang tải...</p>}
+
+      {!loading && assignments.length === 0 && (
+        <p className="py-2 text-sm text-gray-500">Chưa có thành viên nào.</p>
+      )}
+
+      {!loading && assignments.length > 0 && (
+        <TimelineTable dimmed={refreshing}>
+          <TimelineTableHeader label="Thành viên" rangeStart={rangeStart} rangeEnd={rangeEnd} />
+
+          <ul className="divide-y divide-gray-100">
+            {assignments.map((assignment) => (
+              <AssignmentRow
+                key={assignment.id}
+                assignment={assignment}
+                canManage={canManage}
+                ending={endingId === assignment.id}
+                rangeStart={rangeStart}
+                rangeEnd={rangeEnd}
+                onEnd={() => handleEnd(assignment)}
+                onEndRole={(rolePeriod) => handleEndRole(assignment, rolePeriod)}
+                onAddRole={(roleId) => handleAddRole(assignment, roleId)}
+                onRoleChangeRequested={refresh}
+                roleOptions={activeRoleOptions}
+                rolesLoading={rolesLoading}
+              />
+            ))}
+          </ul>
+        </TimelineTable>
+      )}
+
+      <Pager
+        hasPrev={Boolean(meta.prev_cursor)}
+        hasNext={Boolean(meta.next_cursor)}
+        onPrev={goToPrev}
+        onNext={goToNext}
+      />
+    </div>
+  );
+}
+
+function AssignmentRow({
+  assignment,
+  canManage,
+  ending,
+  rangeStart,
+  rangeEnd,
+  onEnd,
+  onEndRole,
+  onAddRole,
+  onRoleChangeRequested,
+  roleOptions,
+  rolesLoading,
+}) {
+  const { user } = useAuth();
+  const [showAddRole, setShowAddRole] = useState(false);
+  const [newRoleId, setNewRoleId] = useState('');
+  const [addingRole, setAddingRole] = useState(false);
+  const [showRoleChangeRequest, setShowRoleChangeRequest] = useState(false);
+
+  const isActive = !assignment.end_date;
+  const activeRolePeriods = assignment.role_periods.filter((period) => !period.end_date);
+  const endedRolePeriods = assignment.role_periods.filter((period) => period.end_date);
+  const activeRoleIds = activeRolePeriods.map((period) => period.project_role_id);
+  const availableRoleOptions = roleOptions.filter((role) => !activeRoleIds.includes(role.id));
+  // Matches RoleChangeRequestPolicy::create() on the backend: the assignment's own
+  // employee (self-service) or the project's PM/admin (canManage) may request a change.
+  const canRequestRoleChange = canManage || assignment.employee_id === user.id;
+
+  async function submitAddRole() {
+    if (!newRoleId) {
+      return;
+    }
+
+    setAddingRole(true);
+
+    try {
+      await onAddRole(Number(newRoleId));
+      setShowAddRole(false);
+      setNewRoleId('');
+    } catch {
+      // http.js interceptor already shows a toast for the error
+    } finally {
+      setAddingRole(false);
+    }
+  }
+
+  return (
+    <TimelineRow
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
+      startDate={assignment.start_date}
+      endDate={assignment.end_date}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-gray-900">{assignment.employee_name}</p>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {canRequestRoleChange && isActive && (
+            <button
+              type="button"
+              onClick={() => setShowRoleChangeRequest(true)}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Đổi vai trò
+            </button>
+          )}
+
+          {canManage && isActive && (
+            <button
+              type="button"
+              onClick={onEnd}
+              disabled={ending}
+              className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 disabled:opacity-50 hover:bg-red-50"
+            >
+              {ending ? 'Đang kết thúc...' : 'Kết thúc'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showRoleChangeRequest && (
+        <RoleChangeRequestModal
+          assignment={assignment}
+          onClose={() => setShowRoleChangeRequest(false)}
+          onCreated={onRoleChangeRequested}
+          roleOptions={roleOptions}
+          rolesLoading={rolesLoading}
+        />
+      )}
+
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {activeRolePeriods.map((period) => (
+          <span
+            key={period.id}
+            className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+          >
+            {period.project_role_name}
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => onEndRole(period)}
+                className="text-blue-400 hover:text-blue-600"
+                aria-label={`Kết thúc vai trò ${period.project_role_name}`}
+              >
+                &times;
+              </button>
+            )}
+          </span>
+        ))}
+
+        {endedRolePeriods.map((period) => (
+          <span
+            key={period.id}
+            className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-400 line-through"
+            title={`${period.start_date} → ${period.end_date}`}
+          >
+            {period.project_role_name}
+          </span>
+        ))}
+
+        {canManage && isActive && !showAddRole && (
+          <button
+            type="button"
+            onClick={() => setShowAddRole(true)}
+            disabled={rolesLoading}
+            className="rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-500 disabled:opacity-50 hover:bg-gray-100"
+          >
+            + Thêm vai trò
+          </button>
+        )}
+      </div>
+
+      {canManage && isActive && showAddRole && (
+        <div className="mt-2 flex items-center gap-2">
+          <select
+            value={newRoleId}
+            onChange={(e) => setNewRoleId(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+          >
+            <option value="">Chọn vai trò...</option>
+            {availableRoleOptions.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={submitAddRole}
+            disabled={!newRoleId || addingRole}
+            className="rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-50 hover:bg-gray-700"
+          >
+            {addingRole ? 'Đang thêm...' : 'Thêm'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAddRole(false)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Hủy
+          </button>
+        </div>
+      )}
+    </TimelineRow>
+  );
+}
