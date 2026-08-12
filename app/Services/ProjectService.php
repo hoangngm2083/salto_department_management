@@ -90,6 +90,19 @@ class ProjectService
     }
 
     /**
+     * Whether the employee is currently an active manager of at least one
+     * project - PM-ness isn't tied to system role (mục 9.1), so the FE uses
+     * this on `/auth/me` to decide whether it's worth mounting the "dự án tôi
+     * quản lý" / "task quá hạn" dashboard widgets at all, instead of every
+     * login firing both requests just to find out most of the time there's
+     * nothing to show.
+     */
+    public function isManagerOfAnyProject(Employee $employee): bool
+    {
+        return Project::query()->managedBy($employee->id)->exists();
+    }
+
+    /**
      * Projects the given employee is currently an active manager of, with the
      * same task-progress counts `ProjectController::show()` loads for a
      * single project - the dashboard "project tôi quản lý" widget (mục 9.1)

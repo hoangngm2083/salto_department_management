@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Employee;
+use App\Models\Project;
+use App\Models\ProjectManager;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -26,9 +28,34 @@ test('login_validCredentials_bearerToken', function () {
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Authenticated successfully.')
         ->assertJsonPath('data.employee.id', $employee->id)
+        ->assertJsonPath('data.employee.is_project_manager', false)
         ->assertJsonPath('data.token_type', 'Bearer');
 
     expect($response->json('data.token'))->toBeString()->not->toBeEmpty();
+});
+
+test('login_activeProjectManager_isProjectManagerTrue', function () {
+    // Arrange - PM-ness isn't tied to system role, so a plain employee here is deliberate.
+    $employee = Employee::factory()->create([
+        'email' => 'pm@example.com',
+        'password' => 'password',
+        'position' => 'employee',
+    ]);
+    ProjectManager::factory()->create([
+        'project_id' => Project::factory()->create()->id,
+        'employee_id' => $employee->id,
+        'end_date' => null,
+    ]);
+
+    // Act
+    $response = $this->postJson('/api/auth/login', [
+        'email' => $employee->email,
+        'password' => 'password',
+        'device_name' => 'pest',
+    ]);
+
+    // Assert
+    $response->assertSuccessful()->assertJsonPath('data.employee.is_project_manager', true);
 });
 
 test('login_managerCredentials_abilitiesPersisted', function () {
@@ -169,7 +196,8 @@ test('getCurrentEmployee_authenticatedEmployee_employeeReturned', function () {
     $response->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.id', $employee->id)
-        ->assertJsonPath('data.email', $employee->email);
+        ->assertJsonPath('data.email', $employee->email)
+        ->assertJsonPath('data.is_project_manager', false);
 });
 
 test('getCurrentEmployee_missingToken_unauthorized', function () {
