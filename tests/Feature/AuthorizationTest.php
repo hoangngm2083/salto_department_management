@@ -270,7 +270,8 @@ test('updateEmployee_managerSetsLevelAndManager_fieldsUnchanged', function () {
         'department_id' => $department->id,
     ]);
     $level = Level::factory()->create();
-    $otherEmployee = Employee::factory()->create(['position' => 'manager']);
+    $hrDepartment = Department::factory()->create(['slug' => config('departments.hr_slug')]);
+    $otherEmployee = Employee::factory()->create(['position' => 'manager', 'department_id' => $hrDepartment->id]);
     $employee = Employee::factory()->create([
         'position' => 'employee',
         'department_id' => $department->id,

@@ -2,7 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Enums\LeaveRequestStatus;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -24,10 +23,10 @@ class LeaveRequestFactory extends Factory
 
         return [
             'employee_id' => Employee::factory(),
+            'project_id' => null,
             'start_date' => $startDate->format('Y-m-d'),
             'end_date' => $endDate->format('Y-m-d'),
             'reason' => $this->faker->sentence(10),
-            'status' => LeaveRequestStatus::Pending,
         ];
     }
 }

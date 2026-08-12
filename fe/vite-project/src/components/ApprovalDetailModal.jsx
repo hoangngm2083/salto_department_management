@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { getApproval, updateApproval } from '../api/approvals';
+import { getLeaveRequest } from '../api/leaveRequests';
 import { getRoleChangeRequest } from '../api/roleChangeRequests';
 import { useAuth } from '../context/useAuth';
 import useAsyncResource from '../hooks/useAsyncResource';
@@ -19,10 +20,10 @@ const ACTION_MESSAGES = {
 };
 
 /**
- * Generic approval detail + step timeline + approve/reject/cancel, plus - only for
- * project_role_change today - the business fields fetched from role-change-requests. Future
- * workflow types (F/G) would extend the `workflow_type === 'project_role_change'` branch below
- * with their own business-detail fetch/render, same pattern.
+ * Generic approval detail + step timeline + approve/reject/cancel, plus - for
+ * project_role_change and leave_request today - the business fields fetched from their own
+ * dedicated endpoints. Future workflow types (F/G) would extend the chained fetch below with
+ * their own business-detail fetch/render, same pattern.
  *
  * "Duyệt"/"Từ chối" only render when the viewer resolves to the active step's approver via a
  * single known employee id (ProjectManager/DirectManager/SpecificEmployee) or the SystemAdmin
@@ -42,6 +43,7 @@ export default function ApprovalDetailModal({ approvalId, onClose, onChanged }) 
         approval,
         roleChangeRequest:
           approval.workflow_type === 'project_role_change' ? await getRoleChangeRequest(approval.requestable_id) : null,
+        leaveRequest: approval.workflow_type === 'leave_request' ? await getLeaveRequest(approval.requestable_id) : null,
       })),
     deps: [approvalId],
   });
@@ -56,6 +58,7 @@ export default function ApprovalDetailModal({ approvalId, onClose, onChanged }) 
   }, [data]);
 
   const roleChangeRequest = data?.roleChangeRequest ?? null;
+  const leaveRequest = data?.leaveRequest ?? null;
 
   async function handleAction(type) {
     setActing(true);
@@ -129,6 +132,21 @@ export default function ApprovalDetailModal({ approvalId, onClose, onChanged }) 
                   </p>
                   <p>
                     <span className="text-gray-400">Người gửi:</span> {roleChangeRequest.created_by_name}
+                  </p>
+                </div>
+              )}
+
+              {leaveRequest && (
+                <div className="space-y-1 text-sm text-gray-600">
+                  <p>
+                    <span className="text-gray-400">Nhân viên:</span> {leaveRequest.employee_name}
+                    {leaveRequest.project_name ? ` · ${leaveRequest.project_name}` : ''}
+                  </p>
+                  <p>
+                    <span className="text-gray-400">Thời gian:</span> {leaveRequest.start_date} &rarr; {leaveRequest.end_date}
+                  </p>
+                  <p>
+                    <span className="text-gray-400">Lý do:</span> {leaveRequest.reason}
                   </p>
                 </div>
               )}

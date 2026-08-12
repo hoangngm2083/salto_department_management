@@ -1,7 +1,10 @@
 <?php
 
-use App\Enums\LeaveRequestStatus;
-use App\Models\Department;
+use App\Enums\ApprovalStepStatus;
+use App\Enums\ApproverKind;
+use App\Enums\WorkflowType;
+use App\Models\ApprovalRequest;
+use App\Models\ApprovalStep;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Notifications\LeaveRequestReminder;
@@ -10,6 +13,26 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
+
+function makeActiveLeaveApprovalStep(Employee $approver, ?string $startDate = null, ?string $reminderSentAt = null): ApprovalStep
+{
+    $leaveRequest = LeaveRequest::factory()->create([
+        'start_date' => $startDate ?? today()->addDay()->toDateString(),
+    ]);
+    $approval = ApprovalRequest::factory()->create([
+        'requestable_type' => LeaveRequest::class,
+        'requestable_id' => $leaveRequest->id,
+        'workflow_type' => WorkflowType::LeaveRequest,
+    ]);
+
+    return ApprovalStep::factory()->create([
+        'approval_request_id' => $approval->id,
+        'approver_kind' => ApproverKind::ProjectManager,
+        'approver_employee_id' => $approver->id,
+        'status' => ApprovalStepStatus::Active,
+        'reminder_sent_at' => $reminderSentAt,
+    ]);
+}
 
 test('leaveRequestReminders_isScheduled_withConfiguredCronAndOverlapProtection', function () {
     $schedule = app(Schedule::class);
@@ -21,59 +44,87 @@ test('leaveRequestReminders_isScheduled_withConfiguredCronAndOverlapProtection',
         ->and($event->withoutOverlapping)->toBeTrue();
 });
 
-test('sendLeaveRequestReminders_pendingWithinWindowNotYetReminded_sentAndMarked', function () {
+test('sendLeaveRequestReminders_activeStepWithinWindowNotYetReminded_sentAndMarked', function () {
     // Arrange
     Notification::fake();
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => LeaveRequestStatus::Pending,
-        'start_date' => today()->addDay(),
-        'reminder_sent_at' => null,
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    $step = makeActiveLeaveApprovalStep($pm, today()->addDay()->toDateString());
+
+    // Act
+    $this->artisan('leave-requests:send-reminders')->assertSuccessful();
+
+    // Assert
+    Notification::assertSentTo($pm, LeaveRequestReminder::class);
+    expect($step->fresh()->reminder_sent_at)->not->toBeNull();
+});
+
+test('sendLeaveRequestReminders_hrStepWithinWindow_directManagerSent', function () {
+    // Arrange - the resolved approver could just as well be the HR/direct-manager step,
+    // not only a PM step; the reminder query doesn't care which kind produced it.
+    Notification::fake();
+    $hrManager = Employee::factory()->create(['position' => 'manager']);
+    $leaveRequest = LeaveRequest::factory()->create(['start_date' => today()->addDay()->toDateString()]);
+    $approval = ApprovalRequest::factory()->create([
+        'requestable_type' => LeaveRequest::class,
+        'requestable_id' => $leaveRequest->id,
+        'workflow_type' => WorkflowType::LeaveRequest,
+    ]);
+    ApprovalStep::factory()->create([
+        'approval_request_id' => $approval->id,
+        'approver_kind' => ApproverKind::DirectManager,
+        'approver_employee_id' => $hrManager->id,
+        'status' => ApprovalStepStatus::Active,
     ]);
 
     // Act
     $this->artisan('leave-requests:send-reminders')->assertSuccessful();
 
     // Assert
-    Notification::assertSentTo($manager, LeaveRequestReminder::class);
-    expect($leaveRequest->fresh()->reminder_sent_at)->not->toBeNull();
+    Notification::assertSentTo($hrManager, LeaveRequestReminder::class);
 });
 
 test('sendLeaveRequestReminders_startDateOutsideWindow_notSent', function () {
     // Arrange
     Notification::fake();
-    $department = Department::factory()->create();
-    Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => LeaveRequestStatus::Pending,
-        'start_date' => today()->addDays(10),
-        'reminder_sent_at' => null,
-    ]);
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    $step = makeActiveLeaveApprovalStep($pm, today()->addDays(10)->toDateString());
 
     // Act
     $this->artisan('leave-requests:send-reminders')->assertSuccessful();
 
     // Assert
     Notification::assertNothingSent();
-    expect($leaveRequest->fresh()->reminder_sent_at)->toBeNull();
+    expect($step->fresh()->reminder_sent_at)->toBeNull();
 });
 
 test('sendLeaveRequestReminders_alreadyReminded_notSentAgain', function () {
     // Arrange
     Notification::fake();
-    $department = Department::factory()->create();
-    Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => LeaveRequestStatus::Pending,
-        'start_date' => today()->addDay(),
-        'reminder_sent_at' => now()->subHour(),
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    makeActiveLeaveApprovalStep($pm, today()->addDay()->toDateString(), now()->subHour()->toDateTimeString());
+
+    // Act
+    $this->artisan('leave-requests:send-reminders')->assertSuccessful();
+
+    // Assert
+    Notification::assertNothingSent();
+});
+
+test('sendLeaveRequestReminders_stepNotActive_notSent', function () {
+    // Arrange - e.g. the step already got approved before the reminder ran
+    Notification::fake();
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    $leaveRequest = LeaveRequest::factory()->create(['start_date' => today()->addDay()->toDateString()]);
+    $approval = ApprovalRequest::factory()->create([
+        'requestable_type' => LeaveRequest::class,
+        'requestable_id' => $leaveRequest->id,
+        'workflow_type' => WorkflowType::LeaveRequest,
+    ]);
+    ApprovalStep::factory()->create([
+        'approval_request_id' => $approval->id,
+        'approver_kind' => ApproverKind::ProjectManager,
+        'approver_employee_id' => $pm->id,
+        'status' => ApprovalStepStatus::Approved,
     ]);
 
     // Act
@@ -83,17 +134,16 @@ test('sendLeaveRequestReminders_alreadyReminded_notSentAgain', function () {
     Notification::assertNothingSent();
 });
 
-test('sendLeaveRequestReminders_nonPendingStatus_notSent', function () {
-    // Arrange
+test('sendLeaveRequestReminders_nonLeaveRequestWorkflow_notSent', function () {
+    // Arrange - an active step for some other workflow type must never be picked up here
     Notification::fake();
-    $department = Department::factory()->create();
-    Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => LeaveRequestStatus::Approved,
-        'start_date' => today()->addDay(),
-        'reminder_sent_at' => null,
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    $approval = ApprovalRequest::factory()->create(['workflow_type' => WorkflowType::ProjectRoleChange]);
+    ApprovalStep::factory()->create([
+        'approval_request_id' => $approval->id,
+        'approver_kind' => ApproverKind::ProjectManager,
+        'approver_employee_id' => $pm->id,
+        'status' => ApprovalStepStatus::Active,
     ]);
 
     // Act
@@ -101,45 +151,33 @@ test('sendLeaveRequestReminders_nonPendingStatus_notSent', function () {
 
     // Assert
     Notification::assertNothingSent();
-});
-
-test('sendLeaveRequestReminders_departmentHasNoManager_marksSentWithoutErrorOrNotification', function () {
-    // Arrange
-    Notification::fake();
-    $department = Department::factory()->create();
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => LeaveRequestStatus::Pending,
-        'start_date' => today()->addDay(),
-        'reminder_sent_at' => null,
-    ]);
-
-    // Act
-    $this->artisan('leave-requests:send-reminders')->assertSuccessful();
-
-    // Assert
-    Notification::assertNothingSent();
-    expect($leaveRequest->fresh()->reminder_sent_at)->not->toBeNull();
 });
 
 test('sendLeaveRequestReminders_customWindowFromConfig_respected', function () {
     // Arrange
     config(['leave-requests.reminder_days_before_start' => 5]);
     Notification::fake();
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => LeaveRequestStatus::Pending,
-        'start_date' => today()->addDays(4),
-        'reminder_sent_at' => null,
-    ]);
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    makeActiveLeaveApprovalStep($pm, today()->addDays(4)->toDateString());
 
     // Act
     $this->artisan('leave-requests:send-reminders')->assertSuccessful();
 
     // Assert
-    Notification::assertSentTo($manager, LeaveRequestReminder::class);
+    Notification::assertSentTo($pm, LeaveRequestReminder::class);
+});
+
+test('sendLeaveRequestReminders_multiplePendingStepsForSameApprover_notifiedOnceWithCorrectCount', function () {
+    // Arrange
+    Notification::fake();
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    makeActiveLeaveApprovalStep($pm, today()->addDay()->toDateString());
+    makeActiveLeaveApprovalStep($pm, today()->addDays(2)->toDateString());
+
+    // Act
+    $this->artisan('leave-requests:send-reminders')->assertSuccessful();
+
+    // Assert
+    Notification::assertSentToTimes($pm, LeaveRequestReminder::class, 1);
+    Notification::assertSentTo($pm, LeaveRequestReminder::class, fn ($notification) => $notification->total === 2);
 });

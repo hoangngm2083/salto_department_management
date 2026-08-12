@@ -126,11 +126,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('destroy', 'abilities:project-roles:delete');
 
     Route::apiResource('leave-requests', LeaveRequestController::class)
-        ->only(['index', 'store', 'show', 'update'])
-        ->middlewareFor('index', 'abilities:leave-requests:read')
-        ->middlewareFor('show', 'abilities:leave-requests:read')
+        ->only(['store', 'show'])
         ->middlewareFor('store', 'abilities:leave-requests:create')
-        ->middlewareFor('update', 'abilities:leave-requests:update');
+        ->middlewareFor('show', 'abilities:leave-requests:read');
 
     Route::apiResource('role-change-requests', RoleChangeRequestController::class)
         ->only(['store', 'show'])

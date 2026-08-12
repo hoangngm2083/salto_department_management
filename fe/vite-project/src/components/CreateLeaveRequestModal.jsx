@@ -1,17 +1,64 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { getEmployeeWorkHistory } from '../api/employees';
 import { createLeaveRequest } from '../api/leaveRequests';
+import { useAuth } from '../context/useAuth';
 
+/**
+ * Project picker reuses GET /employees/{employee}/projects (workHistory, active=1) - the
+ * same endpoint/shape MyProjectsPage.jsx already uses - instead of a new endpoint. Required
+ * when the employee has at least one active assignment (mirrors LeaveRequestService's
+ * "project_id required iff an active assignment exists" rule); hidden entirely otherwise,
+ * since the backend workflow simply skips the PM step when there's nothing to pick.
+ */
 export default function CreateLeaveRequestModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ start_date: '', end_date: '', reason: '' });
+  const { user } = useAuth();
+  const [form, setForm] = useState({ project_id: '', start_date: '', end_date: '', reason: '' });
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getEmployeeWorkHistory(user.id, { active: 1 })
+      .then((history) => {
+        if (cancelled) {
+          return;
+        }
+
+        // `active=1` filters assignments by end_date IS NULL server-side, which isn't quite
+        // the same condition LeaveRequestService validates against (status === 'active') -
+        // e.g. a not-yet-started 'pending' assignment also has a null end_date. Filter by
+        // the assignment's actual status here so the picker never offers a project the
+        // backend would then reject.
+        const activeProjects = history.projects.filter((project) => project.status === 'active');
+        setProjects(activeProjects);
+
+        if (activeProjects.length === 1) {
+          setForm((f) => ({ ...f, project_id: String(activeProjects[0].project_id) }));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setProjectsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
 
     try {
-      const created = await createLeaveRequest(form);
+      const created = await createLeaveRequest({
+        ...form,
+        project_id: form.project_id ? Number(form.project_id) : null,
+      });
       toast.success('Gửi yêu cầu nghỉ phép thành công.');
       onCreated?.(created);
       onClose();
@@ -36,6 +83,27 @@ export default function CreateLeaveRequestModal({ onClose, onCreated }) {
         </div>
 
         <form onSubmit={handleSubmit}>
+          {!projectsLoading && projects.length > 0 && (
+            <label className="mb-4 block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Dự án</span>
+              <select
+                required
+                value={form.project_id}
+                onChange={(e) => setForm({ ...form, project_id: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="" disabled>
+                  Chọn dự án...
+                </option>
+                {projects.map((project) => (
+                  <option key={project.project_id} value={project.project_id}>
+                    {project.project}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <label className="mb-4 block">
             <span className="mb-1 block text-sm font-medium text-gray-700">Từ ngày</span>
             <input
@@ -80,7 +148,7 @@ export default function CreateLeaveRequestModal({ onClose, onCreated }) {
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || projectsLoading}
               className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-700"
             >
               {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}

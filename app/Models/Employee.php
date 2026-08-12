@@ -68,6 +68,10 @@ class Employee extends Authenticatable
     }
 
     /**
+     * The employee's direct manager - always someone in the HR department
+     * (config('departments.hr_slug')), enforced at UpsertEmployeeRequest, never the
+     * employee's own functional department head.
+     *
      * @return BelongsTo<Employee, $this>
      */
     public function manager(): BelongsTo

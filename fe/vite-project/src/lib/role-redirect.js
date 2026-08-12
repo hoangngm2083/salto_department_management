@@ -1,6 +1,5 @@
 import {
   BuildingOfficeIcon,
-  CalendarDaysIcon,
   CheckCircleIcon,
   ClockIcon,
   FolderIcon,
@@ -24,7 +23,6 @@ const NAV = {
   levels: { to: '/levels', label: 'Cấp bậc', icon: ChartBarIcon },
   projects: { to: '/projects', label: 'Dự án', icon: FolderIcon },
   projectRoles: { to: '/project-roles', label: 'Vai trò dự án', icon: TagIcon },
-  leaveRequests: { to: '/leave-requests', label: 'Yêu cầu nghỉ phép', icon: CalendarDaysIcon },
   taskDelayRequests: { to: '/task-delay-requests', label: 'Yêu cầu gia hạn task', icon: ClockIcon },
   approvals: { to: '/approvals', label: 'Phê duyệt', icon: CheckCircleIcon },
   myTasks: { to: '/my-tasks', label: 'Task của tôi', icon: ListBulletIcon },
@@ -49,7 +47,6 @@ export function sidebarNavItems(employee) {
         NAV.levels,
         NAV.projects,
         NAV.projectRoles,
-        NAV.leaveRequests,
         NAV.taskDelayRequests,
         NAV.approvals,
       ];
@@ -65,11 +62,10 @@ export function sidebarNavItems(employee) {
         NAV.levels,
         NAV.projects,
         NAV.projectRoles,
-        NAV.leaveRequests,
         NAV.taskDelayRequests,
         NAV.approvals,
       ];
     default:
-      return [NAV.dashboard, NAV.myTasks, NAV.myProjects, NAV.leaveRequests, NAV.taskDelayRequests, NAV.approvals];
+      return [NAV.dashboard, NAV.myTasks, NAV.myProjects, NAV.taskDelayRequests, NAV.approvals];
   }
 }

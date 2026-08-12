@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Enums\LeaveRequestStatus;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 
@@ -18,42 +17,48 @@ class LeaveRequestPolicy
         return true;
     }
 
+    /**
+     * Grants viewing the business-detail record (GET /leave-requests/{id}, used to hydrate
+     * ApprovalDetailModal) to the requester (always == subject employee here), the resolved
+     * approver of the request's current active step, plus anyone *currently* eligible to
+     * act on it even if the organization has since changed - a current active PM of the
+     * picked project, or the employee's current direct manager (HR step) - not just whoever
+     * was actually resolved at submit time, mirroring RoleChangeRequestPolicy::view()'s same
+     * broader philosophy. The resolved-approver branch matters because a step's
+     * approver_employee_id is locked in at submit time (ApprovalRequestService::submit()) -
+     * without it, someone reassigned off the project/role mid-approval could still legally
+     * act on the step via ApprovalRequestPolicy::canActOnStep() yet get 403'd here, unable
+     * to see the reason/dates before deciding. Approve/reject/cancel authorization itself
+     * lives entirely in ApprovalRequestPolicy.
+     */
     public function view(Employee $employee, LeaveRequest $leaveRequest): bool
     {
-        if ($employee->position === 'manager') {
-            return $employee->department_id === $leaveRequest->employee->department_id;
+        if ($employee->id === $leaveRequest->employee_id) {
+            return true;
         }
 
-        return $employee->id === $leaveRequest->employee_id;
-    }
+        if ($employee->id === $leaveRequest->approvalRequest?->activeStep?->approver_employee_id) {
+            return true;
+        }
 
-    public function create(Employee $employee): bool
-    {
-        return true;
-    }
+        if ($employee->id === $leaveRequest->employee->manager_employee_id) {
+            return true;
+        }
 
-    /**
-     * Determine whether the leave request's status may be transitioned to $targetStatus.
-     * Owners may only cancel their own pending request; managers may only approve/reject
-     * a pending request from their own department. Admins are exempt from every constraint
-     * below (any status, any department, any current state) via the before() bypass.
-     */
-    public function update(Employee $employee, LeaveRequest $leaveRequest, string $targetStatus): bool
-    {
-        if ($leaveRequest->status !== LeaveRequestStatus::Pending) {
+        if ($leaveRequest->project_id === null) {
             return false;
         }
 
-        if ($targetStatus === LeaveRequestStatus::Cancelled->value) {
-            return $employee->id === $leaveRequest->employee_id;
-        }
+        return $leaveRequest->project->activeManagers()->where('employee_id', $employee->id)->exists();
+    }
 
-        if (in_array($targetStatus, [LeaveRequestStatus::Approved->value, LeaveRequestStatus::Rejected->value], true)) {
-            return $employee->position === 'manager'
-                && $employee->department_id === $leaveRequest->employee->department_id;
-        }
-
-        return false;
+    /**
+     * Every employee may always request their own leave - project_id is optional routing
+     * context for the PM step, not a subject whose current state needs authorizing.
+     */
+    public function create(Employee $employee): bool
+    {
+        return true;
     }
 
     public function delete(Employee $employee, LeaveRequest $leaveRequest): bool

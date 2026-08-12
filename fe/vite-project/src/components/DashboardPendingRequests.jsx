@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { listApprovals } from '../api/approvals';
-import { listLeaveRequests } from '../api/leaveRequests';
 import { listTaskDelayRequests } from '../api/taskDelayRequests';
 import useAsyncResource from '../hooks/useAsyncResource';
 import { WORKFLOW_TYPE_LABELS } from '../lib/workflow-type';
@@ -11,39 +10,31 @@ const PREVIEW_SIZE = 5;
 const EMPTY_PAGE = { data: [], meta: {} };
 
 /**
- * Pending leave requests, task delay requests, and Approval Engine requests
- * (role change today, more workflow_type values in later phases) waiting on the viewer's
- * decision - previewed a few at a time with a link into the real list page to act on them,
- * the dashboard just needs to say "this is waiting on you" (mục 9.1), not replicate the full
- * approve/reject UI.
+ * Pending task delay requests and Approval Engine requests (role change and leave request
+ * today, more workflow_type values in later phases) waiting on the viewer's decision -
+ * previewed a few at a time with a link into the real list page to act on them, the dashboard
+ * just needs to say "this is waiting on you" (mục 9.1), not replicate the full approve/reject
+ * UI. Leave requests surface via the `pending_my_approval` approvals call below (they moved
+ * onto the Approval Engine, Phase E.5) rather than a dedicated leave-requests call.
  *
- * All three self-scope by actor position on the backend (manager -> own department / own
- * managed projects, employee -> own requests, admin unscoped), so this component doesn't need
- * to know who's viewing it. `GetTaskDelayRequestsRequest` now scopes a manager to requests on
- * projects they actively manage plus their own submitted requests (see
- * TaskDelayRequestService::getPaginated()), matching the leave-request scoping - no caller flag
- * needed.
+ * Both self-scope by actor position on the backend (manager -> own managed projects, employee
+ * -> own requests, admin unscoped), so this component doesn't need to know who's viewing it.
+ * `GetTaskDelayRequestsRequest` scopes a manager to requests on projects they actively manage
+ * plus their own submitted requests (see TaskDelayRequestService::getPaginated()) - no caller
+ * flag needed.
  */
 export default function DashboardPendingRequests({ title }) {
   const { data, loading, refreshing, error, refresh } = useAsyncResource({
     fetcher: () =>
       Promise.all([
-        listLeaveRequests({ status: 'pending', per_page: PREVIEW_SIZE }),
         listTaskDelayRequests({ status: 'pending', per_page: PREVIEW_SIZE }),
         listApprovals({ pending_my_approval: 1, per_page: PREVIEW_SIZE }),
       ]),
   });
 
-  const [leaveRequests, delayRequests, approvals] = data ?? [EMPTY_PAGE, EMPTY_PAGE, EMPTY_PAGE];
+  const [delayRequests, approvals] = data ?? [EMPTY_PAGE, EMPTY_PAGE];
 
   const items = useMemo(() => {
-    const leaves = (leaveRequests?.data ?? []).map((request) => ({
-      key: `leave-${request.id}`,
-      to: '/leave-requests',
-      label: request.employee_name ? `${request.employee_name} · nghỉ phép` : 'Yêu cầu nghỉ phép',
-      detail: `${request.start_date} → ${request.end_date}`,
-    }));
-
     const delays = (delayRequests?.data ?? []).map((request) => ({
       key: `delay-${request.id}`,
       to: '/task-delay-requests',
@@ -62,8 +53,8 @@ export default function DashboardPendingRequests({ title }) {
         : `Gửi bởi ${approval.requester_name}`,
     }));
 
-    return [...leaves, ...delays, ...approvalItems];
-  }, [leaveRequests, delayRequests, approvals]);
+    return [...delays, ...approvalItems];
+  }, [delayRequests, approvals]);
 
   return (
     <DashboardWidgetCard

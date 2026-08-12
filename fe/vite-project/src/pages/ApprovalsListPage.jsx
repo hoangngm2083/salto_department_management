@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { listApprovals } from '../api/approvals';
 import ApprovalDetailModal from '../components/ApprovalDetailModal';
+import CreateLeaveRequestModal from '../components/CreateLeaveRequestModal';
 import Pager from '../components/Pager';
 import useCursorList from '../hooks/useCursorList';
 import { APPROVAL_STATUS_BADGE_CLASSES, APPROVAL_STATUS_LABELS } from '../lib/approval-status';
@@ -12,14 +13,17 @@ const TABS = [
 ];
 
 /**
- * Generic across every Approval Engine workflow (only project_role_change exists so far,
- * Phase F/G add more workflow_type values later without needing a new list page) - reuses the
- * already-existing GET /api/approvals?mine=1|pending_my_approval=1 filters instead of a
- * dedicated role-change-requests index endpoint.
+ * Generic across every Approval Engine workflow (project_role_change and leave_request so
+ * far, Phase F/G add more workflow_type values later without needing a new list page) -
+ * reuses the already-existing GET /api/approvals?mine=1|pending_my_approval=1 filters instead
+ * of dedicated per-workflow index endpoints. Also the entry point for creating a leave
+ * request - unlike role change (created contextually from a project's Members tab), leave
+ * requests have no natural anchoring page, so creation lives here where the result shows up.
  */
 export default function ApprovalsListPage() {
   const [tab, setTab] = useState('pending');
   const [selectedId, setSelectedId] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const activeTab = TABS.find((t) => t.key === tab);
 
@@ -30,7 +34,16 @@ export default function ApprovalsListPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold text-gray-900">Phê duyệt</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">Phê duyệt</h1>
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
+        >
+          Tạo yêu cầu nghỉ phép
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-2 border-b border-gray-200">
         {TABS.map((t) => (
@@ -113,6 +126,8 @@ export default function ApprovalsListPage() {
       {selectedId && (
         <ApprovalDetailModal approvalId={selectedId} onClose={() => setSelectedId(null)} onChanged={refresh} />
       )}
+
+      {showCreate && <CreateLeaveRequestModal onClose={() => setShowCreate(false)} onCreated={refresh} />}
     </div>
   );
 }

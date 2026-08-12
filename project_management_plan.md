@@ -53,6 +53,7 @@ status                // backed enum: active | inactive | resigned, default 'act
 - Quan hệ mới trên model: `Employee::manager(): BelongsTo` (self), `Employee::directReports(): HasMany` (self).
 - Chỉ `admin` được set/đổi `manager_employee_id` và `current_level_id` (mở rộng `ALLOWED_UPDATE_FIELDS_BY_ROLE` trong `EmployeeService`).
 - Validate: `manager_employee_id !== id`.
+- **`manager_employee_id` phải là 1 employee thuộc phòng Nhân sự** (`config('departments.hr_slug')`, mặc định slug `phong-nhan-su`) — direct manager trong hệ thống này là chức năng của HR, không phải trưởng phòng chuyên môn của chính nhân viên đó. Enforce ở `UpsertEmployeeRequest` (`Rule::exists('employees', 'id')->where('department_id', $hrDepartmentId)`), không phải constraint DB. **Lưu ý:** rule này được chốt sau khi seed data đã tồn tại (VD `EmployeeSeeder.php` đang gán trưởng phòng cùng department làm manager, không phải người ở Phòng Nhân sự) — seed cũ chưa được cập nhật lại cho khớp, chỉ áp dụng cho các lần set/đổi `manager_employee_id` mới qua API từ giờ trở đi.
 - Dùng cho: approver `DIRECT_MANAGER` ở Level Promotion (Phase F) — ưu tiên `employee.manager_employee_id`, fallback department-manager-pool nếu null.
 
 **Rule nghỉ việc/xoá:** `SoftDelete` dùng cho data-entry sai (xoá hẳn, không có lịch sử thật cần giữ). `status → resigned` dùng khi nhân viên đã nghỉ nhưng cần giữ lịch sử (project_assignments, tasks, approval records cũ vẫn query được). Khi chuyển sang `resigned`, hệ thống tự động đóng (`end_date = now()`) mọi `project_assignment` và `assignment_role_period` đang active của người đó — không cascade xoá gì. Cả soft-delete lẫn transition sang `resigned` đều phải pass qua `ProjectManagerGuard` (xem mục 3.1) trước khi thực hiện, phòng trường hợp người này đang là PM duy nhất của 1 project nào đó.
@@ -159,9 +160,12 @@ level_promotion_requests    (2 bước: manager → admin)
 
 Sau khi đối chiếu 1 đề xuất approve-flow mới của user với thiết kế gốc, chốt thêm các điểm sau (ngoài 2 điều chỉnh ở đầu mục 4):
 
-- **Thêm `ApproverKind::DepartmentManager`** (bên cạnh 5 kind gốc: DirectManager/ProjectManager/SystemAdmin/SpecificEmployee/Permission) — pool-based, resolve theo `position=manager` + cùng `department_id` với subject employee, dùng cho bước Department Manager riêng biệt bên dưới.
+- **Thêm `ApproverKind::DepartmentManager`** (bên cạnh 5 kind gốc: DirectManager/ProjectManager/SystemAdmin/SpecificEmployee/Permission) — pool-based, resolve theo `position=manager` + cùng `department_id` với subject employee, dùng cho bước Department Manager của **Level Promotion (Phase F)** — Leave Request (E.5) không dùng kind này (xem bên dưới).
 - **Level Promotion (Phase F) đổi từ 2 bước → 3 bước**: `employee → Direct Manager (manager_employee_id) → Department Manager (position=manager) → Admin`. Lý do: "PM" (role theo project) không có thẩm quyền tự nhiên với quyết định cấp bậc (org-level, không gắn project) — user tự nhận ra điều này và chốt bỏ PM khỏi flow này, tách Direct Manager và Department Manager thành 2 bước riêng thay vì 1 bước có fallback như bản gốc.
-- **Leave Request migrate sang Approval Engine (Tier 1)**, không còn là bảng flat đứng riêng — thêm bước PM trước Manager: `employee → PM (của project được chọn lúc tạo request) → Department Manager`. Lý do: PM có thể cần biết/từ chối vì dự án đang gấp tiến độ. Đây là thay đổi kiến trúc cho 1 feature đã ship (có 4 test file cũ) — tracked riêng ở **Phase E.5** (xem mục 7), không nằm trong Phase D.
+- **Leave Request migrate sang Approval Engine (Tier 1)**, không còn là bảng flat đứng riêng — thêm bước PM trước bước duyệt cuối: `employee → PM (của project được chọn lúc tạo request) → HR`. Lý do bước PM: PM có thể cần biết/từ chối vì dự án đang gấp tiến độ. Đây là thay đổi kiến trúc cho 1 feature đã ship (có 4 test file cũ) — tracked riêng ở **Phase E.5** (xem mục 7), không nằm trong Phase D.
+  - **Bước "HR" quyết định lại 2026-08-12**: không phải `ApproverKind::DepartmentManager` như bản nháp ban đầu (vốn resolve theo department *của chính subject employee*), mà là `ApproverKind::DirectManager` trên `subject_employee.manager_employee_id` — vì `manager_employee_id` giờ **luôn là 1 nhân viên thuộc phòng Nhân sự** theo rule mới enforce ở `UpsertEmployeeRequest` (xem mục 2, `config('departments.hr_slug')`), tức "duyệt bởi HR" chính là "duyệt bởi direct manager", không cần lookup department riêng. Nhờ vậy bước này **resolve sớm lúc submit** (giống PM), không phải resolve động lúc approve như `DepartmentManager` — được `NotifyApprovalStepApprover` notify ngay, không rơi vào gap "pool kind chưa notify được" (xem `NOTIFICATION_AND_APPROVAL_ENGINE.md` mục 2.1b). Fallback `SystemAdmin` khi `manager_employee_id` null (nhân viên cấp cao nhất, không có manager).
+  - Bước PM cũng cần fallback: nếu employee không có project assignment active nào tại thời điểm tạo request → bỏ hẳn bước PM, `steps()` chỉ trả về 1 bước HR (interface `ApprovalWorkflow::steps()` đã cho phép chuỗi step thay đổi theo từng request, xem `NOTIFICATION_AND_APPROVAL_ENGINE.md` mục 2.1b).
+  - **Việc còn lại ngoài routing HR/PM** (chiếm phần lớn effort thật): thêm cột `project_id` vào `leave_requests` + UI chọn project lúc tạo; bỏ cột `status/reviewed_by/reviewed_at/review_note` khỏi `leave_requests` (chuyển hẳn sang `approval_requests`, theo đúng nguyên tắc "không duplicate trạng thái ở 2 nơi" đã áp dụng cho `role_change_requests`); viết lại `SendLeaveRequestReminders` (đổi từ query phẳng theo `department_id` sang join `approval_steps.status=active` + group theo approver đã resolve); nghỉ hẳn `LeaveRequestSubmitted`/`LeaveRequestReviewed` (event+listener+notification, 6 file) để dùng chung `ApprovalStepActivated`/`ApprovalRequestDecided` generic; sửa `LeaveRequestsListPage.jsx`/`CreateLeaveRequestModal.jsx`/`NotificationBell.jsx`/`DashboardPendingRequests.jsx` phía FE; viết lại 4 file test cũ (752 dòng) + test riêng cho `LeaveRequestApprovalWorkflow`/`ApplyLeaveRequestHandler`.
 - **API convention đổi khác bản gốc `new_business.md` §32**: dùng 1 endpoint `PATCH /api/approvals/{approval}` với `type` (approve|reject|cancel) trong body, thay vì 3 route riêng `POST .../approve|reject|cancel` — khớp đúng convention RESTful đã dùng cho `leave-requests`/`task-delay-requests` (`PATCH` + field quyết định hành động trong body) thay vì thêm route theo động từ. `type` là hành động, không phải `status` — status kết quả luôn do server tính, không cho client set trực tiếp (giữ đúng tinh thần chống "Cho client gửi `approved_by`, `current_step` hoặc `status`" của `new_business.md` mục 5.2).
 - **Bỏ hẳn ý tưởng "yêu cầu gia hạn project" (PM → Admin)** khỏi roadmap — không có workflow, không có bảng riêng. User đề xuất hướng thay thế: tạo 1 project "Project Management" gồm các PM của các project khác làm thành viên, gia hạn project thực chất = gia hạn task (dùng `task_delay_requests` đã có) trong project này, Admin tự cập nhật `projects.end_date` theo tay. Ghi chú lại ở mục 6 làm tham khảo tương lai, chưa lên lịch.
 
@@ -292,7 +296,7 @@ Lưu ý: quyết định gộp này **chỉ áp dụng tier-2**, không áp dụ
 | **C.5 ✅ (2026-08-10)** | **Task Management** (Task + Comment + Delay Request + Policy + progress trên Project resource, cộng FE Kanban board + modal) | **6-8 ngày** |
 | **D ✅ (2026-08-11)** | **Approval Engine core** (requests/steps/actions, Workflow interface, Registry, State machine, approve/reject/cancel, locking) — chỉ engine, chưa có workflow cụ thể nào | **6-9 ngày** |
 | **E ✅ (2026-08-11)** | **Role Change workflow end-to-end** (ADD/REPLACE/REMOVE) — **milestone demo đầu tiên**, Backend + FE + notification events | 3-4 ngày |
-| E.5 | Leave Request migrate sang Approval Engine, thêm bước PM (2 bước: PM → Department Manager) — xem mục 4.1 | 2-3 ngày |
+| **E.5 ✅ (2026-08-12)** | **Leave Request migrate sang Approval Engine**, thêm bước PM (2 bước: PM → HR/Direct Manager, bỏ bước PM nếu không có active assignment) — xem mục 4.1 | 3-4 ngày |
 | F | Level Promotion (**3 bước: Direct Manager → Department Manager → Admin**, scheduler effective_date) — xem mục 4.1 | 4-5 ngày |
 | G | Project Assignment Request + Project Transfer | 6-8 ngày |
 | H (tuỳ chọn) | WebSocket realtime — cần approval dependency mới | 2-3 ngày |
@@ -654,6 +658,21 @@ Phạm vi đã hỏi lại user và chốt trước khi code: **Backend + FE đ�
 - `GET /api/project-roles` (dùng để load option "vai trò mới"/"vai trò hiện tại" trong `RoleChangeRequestModal`) trả 403 cho employee tự phục vụ — `ProjectRolePolicy::viewAny/view` từ Phase B vốn chỉ cho `manager`. Quyết định: mở `viewAny`/`view` cho **mọi** employee đã đăng nhập (project_roles là dữ liệu tham chiếu thuần, không có gì nhạy cảm cần giấu — chỉ `create/update/delete` vẫn admin-only), thêm `project-roles:read` vào ability bucket `employee`. Đã sửa lại test `getProjectRoles_employeeReadToken_forbidden` → `_successful` (đảo ngược có chủ đích 1 quyết định Phase B cũ, tương tự cách 7.12 từng làm) và 2 mảng ability hardcode trong `AuthenticationTest`.
 - `NotificationBell.jsx`'s `NotificationText` chưa có nhánh cho `ApprovalStepActivated`/`ApprovalRequestDecided` (rơi vào fallback "Bạn có một thông báo mới." chung chung) — thêm 2 nhánh dùng `WORKFLOW_TYPE_LABELS`. Bản đầu viết `... của bạn đã {APPROVAL_STATUS_LABELS[status].toLowerCase()}` bị lặp từ "đã đã áp dụng" vì badge label đã có sẵn tiền tố "Đã" — sửa bằng bộ cụm từ vị ngữ riêng (`APPROVAL_DECIDED_OUTCOME_PHRASES`) thay vì tái dùng label dùng cho badge.
 
+### 7.15. Ghi chú triển khai Phase E.5 — Leave Request migrate sang Approval Engine (đã xong 2026-08-12)
+
+Thực hiện đúng thiết kế đã chốt ở mục 4.1, mirror chặt theo khuôn Role Change (Phase E) — 5 mảnh tương ứng: `LeaveRequestApprovalWorkflow`, `ApplyLeaveRequestHandler` (rỗng có chủ đích — duyệt xong không có gì để mutate, nhưng vẫn bắt buộc phải tồn tại vì `ApprovedRequestHandlerRegistry::get()` throw nếu không có handler nào được tag cho `WorkflowType::LeaveRequest`), `LeaveRequestPolicy` (bỏ hẳn `update()`), `LeaveRequestService::create()`, `LeaveRequestController` (chỉ `store`+`show`). Vài quyết định implementation-level không có trong mục 4.1 gốc, tự chốt theo tinh thần thiết kế đã có:
+
+- **Bước PM bị bỏ hẳn (không fallback `SystemAdmin`) khi chính requester là PM active duy nhất của project đã chọn** — khác với `RoleChangeApprovalWorkflow` (fallback `SystemAdmin` vì đó là bước duyệt *duy nhất*). Lý do: Leave Request luôn có bước HR là gate bắt buộc thứ hai, nên thêm 1 bước admin trước đó là dư thừa.
+- **`reminder_sent_at` chuyển từ `leave_requests` sang `approval_steps`** (cột generic mới, cùng migration thêm `reminder_sent_at` cho `approval_steps`) — "đã nhắc bước này chưa" là khái niệm ở cấp step, tái dùng được cho Phase F/G sau này, đúng nguyên tắc "không duplicate trạng thái ở 2 nơi" áp dụng xuyên suốt migration này. `SendLeaveRequestReminders` viết lại hoàn toàn: join `approval_steps` (status=active, workflow_type=leave_request) thay vì query phẳng theo `department_id`, group theo `approver_employee_id` đã resolve (luôn có giá trị vì cả PM lẫn HR đều resolve sớm lúc submit).
+- **Guard "không trùng lịch nghỉ đang chờ duyệt"** (`assertNoOverlappingPendingRequest`, so `start_date`/`end_date` overlap) — bản flat-table cũ không có guard này; thêm mới vì luồng duyệt đa bước nhiều ngày làm rủi ro trùng lặp cao hơn hẳn, đúng tinh thần `RoleChangeRequestService::assertNoPendingRequest()`.
+- **`project_id` nullable, bắt buộc khi-và-chỉ-khi employee có `activeProjectAssignments()`** — validate ở Service (không phải FormRequest), re-check lại `project_id` có thật sự thuộc 1 assignment active của chính actor không (không tin client).
+- **`EmployeeSeeder` sửa lại**: mọi row `position=employee` trỏ `manager` về `hr-manager@example.com` thay vì trưởng phòng chuyên môn của chính họ (khớp rule HR mới) — nếu không sửa, demo sẽ hiện nhầm 1 trưởng phòng bất kỳ là "người duyệt HR". `hr-manager@example.com` (+ `dev16`) được khai báo đầu roster để `$managerIds` đã có sẵn khi các row sau tham chiếu tới (thứ tự top-to-bottom). `LeaveRequestSeeder` viết lại hoàn toàn theo khuôn `ApprovalDemoSeeder` (gọi service thật, không factory) — 4 case: pending 2-bước (demo trực tiếp), applied 2-bước, rejected ở bước PM (HR không kích hoạt), applied 1-bước (Lý Thị Kim, không có project assignment).
+- **Frontend bỏ hẳn** `LeaveRequestsListPage`/route `/leave-requests`/nav item riêng (khớp tiền lệ Role Change: không có trang riêng) — nút "Tạo yêu cầu nghỉ phép" chuyển vào `ApprovalsListPage` (nơi request hiện ra ngay sau khi tạo, ở tab "Yêu cầu của tôi"). `CreateLeaveRequestModal` thêm dropdown chọn dự án, tái dùng nguyên `GET /employees/{employee}/projects` (`active=1`) đã có sẵn từ `MyProjectsPage` — không thêm endpoint mới. `ApprovalDetailModal`/`DashboardPendingRequests`/`NotificationBell` mở rộng/dọn nhánh `leave_request` theo đúng pattern generic đã có.
+
+**Test:** 43 test mới/viết lại (`LeaveRequestCrudTest` 14, `LeaveRequestAuthorizationTest` 9, `SendLeaveRequestRemindersTest` 9 viết lại, `LeaveRequestApprovalWorkflowTest`/`ApplyLeaveRequestHandlerTest` unit mới), xoá `LeaveRequestNotificationTest` (test 2 event/notification đã bị xoá). Toàn bộ suite (507 test) pass; `vendor/bin/pint --dirty` sạch.
+
+**Verify qua browser** (`migrate:fresh --seed` + FE/BE dev server): đăng nhập `manager@example.com` → tab "Chờ tôi duyệt" thấy đúng leave request pending của Lê Văn Đức (bước PM active) → mở detail modal thấy đúng field nghỉ phép mới (dự án/thời gian/lý do) → duyệt → request chuyển `in_review`, bước HR active. Đăng nhập `hr-manager@example.com` → thấy request ở "Chờ tôi duyệt", duyệt → request `applied`, cả 2 bước "Đã duyệt". Đăng nhập lại `employee@example.com` (chủ đơn) → nhận đúng notification `ApprovalRequestDecided` (`workflow_type: leave_request, status: applied`) qua `GET /api/notifications`. Tạo mới 1 leave request qua modal (chọn dự án từ dropdown tự load) → xuất hiện đúng ở tab "Yêu cầu của tôi", pending 2 bước.
+
 ### 9.7. Tối ưu số lượng request khi vào Dashboard (đã xong 2026-08-11)
 
 User phát hiện qua Network tab: đăng nhập bắn ra một loạt request gần như cùng lúc (mỗi request lại nhân đôi do `React.StrictMode` ở dev — giữ nguyên, không phải bug), trong đó có `employees?per_page=100` nặng 11KB. Kiểm tra cho thấy nguyên nhân gốc không phải thiếu lazy-load route (đã kiểm tra: không ảnh hưởng số lượng XHR) mà là 3 điểm kiến trúc dashboard theo đúng nguyên tắc "mỗi widget tự fetch độc lập" ở mục 9.1 — đúng cho phần lớn trường hợp, nhưng bất lợi ở 3 chỗ cụ thể:
@@ -669,3 +688,214 @@ User phát hiện qua Network tab: đăng nhập bắn ra một loạt request g
 **Verify qua browser** (FE tự bind port 5176, backend port 8000 chạy sẵn từ phiên trước — lặp lại tình huống 7.10/9.5/9.6): đăng nhập admin → Network tab xác nhận **không còn** `employees?per_page=100` (11KB), thay bằng `employees/count` (nhỏ); chỉ 1 request `projects?per_page=100&with_counts=1` dùng chung cho cả 2 widget thay vì 2 request `/projects` khác tham số; **không còn** `managed-projects`/`overdue-tasks` (admin dev test không phải PM dự án nào); tile "Nhân viên" hiện đúng số thật (26, khớp DB, trước đây sẽ hiện "20+"). Đăng xuất, đăng nhập lại bằng tài khoản `employee@test.com` (PM thật của "Dự án Intern", data dev có sẵn từ 7.14) → widget "Dự án tôi quản lý" xuất hiện đúng, Network tab xác nhận `GET /employees/30/managed-projects` có bắn (đúng dự kiến vì `is_project_manager=true`).
 
 Toàn bộ 493 test (bao gồm sửa `getProjectRoles`) pass sau các thay đổi trên; `vendor/bin/pint --dirty` sạch. Password của employee#27 (tài khoản debris có sẵn, không rõ mật khẩu gốc) được set tạm thành `password` qua tinker để đăng nhập test PM thứ hai — giữ nguyên như debris vô hại, cùng tiền lệ các tài khoản test khác trong DB dev.
+
+---
+
+## 10. Module Recruitment (tuyển dụng) — hoàn toàn mới
+
+Khác hẳn mọi module trước đó: đây là module **đầu tiên** cần 1 mặt public (ứng viên xem tin + nộp hồ sơ, không đăng nhập) bên cạnh phần nội bộ HR/PM. 2 quyết định phạm vi đã chốt qua thảo luận (2026-08-12), không hỏi lại nữa:
+
+- **Trang public làm thật, tối giản** — route public thật trong chính app này (không stub/seed-only), nhưng không cần trang marketing đẹp, chỉ cần đúng chức năng.
+- **Người đánh giá ứng viên = người được tag làm interviewer lúc mời phỏng vấn** (xem 10.4, chốt lại 2026-08-12, thay cho ý tưởng "forward cho PM" ban đầu) — vẫn dạng nhẹ/advisory, không dùng Approval Engine cho bước này.
+- **Gửi offer (có lương) bắt buộc Admin duyệt trước khi mail rời khỏi hệ thống** (xem 10.4b, chốt 2026-08-12) — đây **là** 1 workflow của Approval Engine (Tier 1), khác quyết định ban đầu — lý do đổi: quyết định lương/tuyển dụng có rủi ro/tầm quan trọng ngang Level Promotion, không phải loại flat-status nhẹ như Task.
+
+### 10.1. Data model
+
+```php
+job_postings
+├── id, title, slug (unique)
+├── department_id            // FK employees.departments — phòng ban cần tuyển
+├── project_id (nullable)    // FK projects — chỉ set khi tin phục vụ 1 dự án cụ thể, dùng ở 10.4
+├── description, requirements (text)
+├── employment_type           // backed enum: FullTime|PartTime|Internship|Contract
+├── slots_needed (nullable unsigned smallint)
+├── status                     // backed enum: Draft|Published|Closed|Cancelled
+├── created_by (FK employees), published_at, closed_at (nullable)
+├── timestamps, softDeletes
+
+job_posting_channels           // log dispatch — KHÔNG phải bảng cấu hình
+├── id, job_posting_id, channel (string key, vd 'company_career_page')
+├── status                      // backed enum: Pending|Dispatched|Failed
+├── external_ref (nullable)     // id/url phía nền tảng ngoài — để dành chỗ cho channel API thật sau này
+├── dispatched_at, error_message (nullable), timestamps
+
+applicants                     // định danh CON NGƯỜI, tái dùng qua nhiều lần ứng tuyển
+├── id, full_name, email, phone (nullable), linkedin_url (nullable), timestamps
+
+job_applications               // 1 applicant ứng tuyển 1 job_posting
+├── id, applicant_id, job_posting_id
+├── channel (string)            // nộp qua channel nào — attribution
+├── cover_letter (nullable text), resume_path (string, disk 'local')
+├── status                       // backed enum: Submitted|Screening|InterviewInvited|
+│                                //   Interviewed|Offered|Hired|Rejected|OfferDeclined|Withdrawn
+├── reviewed_by (nullable FK employees), reviewed_at, rejection_reason (nullable)
+├── talent_pool (bool default false)   // "lưu lại, có thể liên hệ tương lai" — điểm 2 user yêu cầu
+├── offer_response (nullable backed enum: Accepted|Declined)   // phản hồi qua signed link, xem 10.3b
+├── offer_responded_at (nullable), timestamps, softDeletes
+├── unique(applicant_id, job_posting_id)   // chặn ứng tuyển trùng cùng vị trí
+
+interview_invitations
+├── id, job_application_id, scheduled_at, location_or_link
+├── invited_by (FK employees), notes (nullable)
+├── status (backed enum: Sent|Confirmed|Declined), responded_at (nullable), timestamps
+// KHÔNG có cột cc_emails — xem 10.4, danh sách interviewer nằm ở bảng riêng bên dưới,
+// tham chiếu employee_id chứ không lưu email thô.
+
+interview_interviewers         // vừa là "ai được mời/CC", vừa là nơi lưu đánh giá của người đó (10.4)
+├── id, interview_invitation_id (FK, cascadeOnDelete), employee_id (FK employees)
+├── recommendation (nullable backed enum: Fit|NotFit|Maybe), feedback (nullable text)
+├── submitted_at (nullable), timestamps
+├── unique(interview_invitation_id, employee_id)
+
+job_offer_requests              // dữ liệu nghiệp vụ cho workflow JobOffer trong Approval Engine — xem 10.4b
+├── id, job_application_id (FK, cascadeOnDelete)
+├── proposed_salary (unsigned decimal), salary_currency (string, default 'VND')
+├── proposed_start_date (nullable date), notes (text — tóm tắt/lý do đề xuất của HR)
+├── created_by (FK employees)
+├── timestamps
+// KHÔNG có cột status — trạng thái nằm ở approval_requests, đúng nguyên tắc đã dùng cho
+// role_change_requests (mục 4): không duplicate trạng thái ở 2 nơi.
+```
+
+Tách `applicants` khỏi `job_applications` (thay vì gộp 1 bảng) không phải premature abstraction — chính yêu cầu "cơ chế liên hệ lại trong tương lai" (điểm 2) đòi hỏi truy vấn được "người này từng ứng tuyển gì, có đáng liên hệ lại không" độc lập với 1 lần apply cụ thể.
+
+### 10.2. Channel dispatch (điểm 1) — tái dùng pattern config-map đã có (Import)
+
+Không dùng container `tag()`/Registry kiểu Approval Engine — vì Channel cần **bắn tới nhiều channel đang bật cùng lúc** cho 1 posting (giống `via()` của Notification), khác với Approval/Import vốn chỉ *chọn đúng 1* implementation theo type. Khớp với pattern `config('imports.handlers.*')` hơn:
+
+```php
+// app/Services/Recruitment/Contracts/JobPostingChannel.php
+interface JobPostingChannel {
+    public function key(): string;                              // 'company_career_page'
+    public function dispatch(JobPosting $posting): ChannelDispatchResult;
+}
+
+// config/recruitment.php
+'channels' => [
+    'company_career_page' => \App\Services\Recruitment\Channels\CompanyCareerPageChannel::class,
+    // channel thật sau này: thêm 1 dòng ở đây + 1 class implement interface, không đụng gì khác
+],
+'active_channels' => ['company_career_page'],   // demo: chỉ bật 1, theo đúng yêu cầu user
+```
+
+`JobPostingDispatcher::dispatch()` loop `config('recruitment.active_channels')`, resolve qua `app()`, ghi 1 row `job_posting_channels`/channel. Vì chưa có API tuyển dụng ngoài nào hỗ trợ (đúng nhận định của user), `CompanyCareerPageChannel::dispatch()` thực chất không gọi ra ngoài gì — chỉ đánh dấu dispatched; bản thân việc "lên trang tuyển dụng công ty" chính là posting xuất hiện ở endpoint public (10.5). Interface đã sẵn chỗ cho channel gọi HTTP thật (lưu `external_ref`) mà không đổi gì ở tầng trên — đúng OCP như `ApprovalWorkflowRegistry` đã chứng minh.
+
+### 10.3. HR xem hồ sơ → mời phỏng vấn / reject (điểm 2)
+
+**CV storage:** disk `local` (private, giống `Import::file_path`, **không** disk `public` — PII), download qua controller action stream file, `Gate::authorize('view', $jobApplication)` (mirror `ImportController::show()`).
+
+**Convention action:** `JobApplication` là **flat-status** (HR quyết 1 phát, không có chuỗi duyệt nhiều bước) → đi theo convention `LeaveRequest`/`TaskDelayRequest` (`PATCH .../{id}` body **`status` trực tiếp**, hợp lệ hoá qua `Policy::update($employee, $model, $targetStatus)`), **không** theo convention `type` của Approval Engine (dành riêng cho request có `status` do state machine tính, xem mục 4.1):
+
+```
+PATCH /api/job-applications/{jobApplication}
+  { status: 'interview_invited', scheduled_at, location_or_link, interviewer_ids: [12, 45] }
+  { status: 'rejected', rejection_reason, talent_pool: true }
+```
+
+**`interviewer_ids` là mảng `employee_id`, không phải email** (quyết định 2026-08-12, xem 10.4) — FE dùng ô tìm-chọn employee theo tên (tái dùng pattern `ProjectMemberSearchSelect` đã có, tìm qua `GET /api/employees?name=`), chỉ gửi id lên server. Server tự resolve `employee_id → email` ngay lúc build mail, không lưu/tin email do client gửi lên.
+
+**Email mời phỏng vấn** — Mailable thật đầu tiên trong app (mọi mail hiện có đều qua `Notification::toMail()` nhắm `Employee`/Notifiable; ứng viên không phải Employee nên không `->notify()` được): `Mail::to($applicant->email)->cc($interviewers->pluck('employee.email'))->send(new InterviewInvitationMail(...))`, class mới ở `app/Mail/` (base folder chuẩn Laravel, chưa từng dùng trong app này — cần dùng thật vì lý do kỹ thuật trên, không phải thêm tuỳ tiện).
+
+**Reject:** `status=rejected` + `talent_pool` (HR tick nếu thấy tiềm năng liên hệ sau). Tuỳ chọn: gửi kèm email từ chối lịch sự (checkbox HR mặc định bật, không bắt buộc).
+
+**Authorization:** app không có role "HR" hệ thống — chỉ có `position` (admin/manager/employee) + phòng ban (`config('departments.hr_slug')` đã có sẵn). Mirror `LeaveRequestPolicy`: cho phép khi `position=admin` (bypass `before()`) hoặc `position=manager && department_id === hr_department_id`.
+
+### 10.3b. Email HTML với nút Accept/Decline (mail mời phỏng vấn + mail offer) — quyết định 2026-08-12
+
+User đề xuất thêm: mail mời phỏng vấn/offer dạng HTML, có nút để ứng viên bấm trực tiếp từ mail, bắn request về server xác nhận/từ chối — **chốt: làm**, dùng Laravel **signed URL** (built-in, không thêm dependency) thay vì token tự chế.
+
+**Cạm bẫy phải tránh:** nếu link trong mail là GET và **mutate ngay khi fetch**, các bộ quét mail tự động (Outlook Safe Links, Proofpoint, Gmail proxy...) sẽ tự động fetch trước link để scan malware — vô tình tự "accept"/"decline" thay ứng viên trước khi họ đọc mail. Đây là lỗi thật đã biết trong ngành, không phải giả định.
+
+**Thiết kế 2 bước, tránh đúng cạm bẫy trên:**
+1. Link trong mail = GET, `URL::temporarySignedRoute()` (hết hạn theo `scheduled_at`/hạn phản hồi offer) → mở 1 trang xác nhận **public** trên FE. GET này chỉ đọc (hiện lại thông tin lịch phỏng vấn/offer), không đổi state — vô hại kể cả bị bot prefetch.
+2. Trang hiện 2 nút thật; bấm nút mới gọi **POST** (cùng chữ ký signed, middleware `signed`) — đây là hành động mutate thật. Bot quét mail không tự bấm nút.
+3. Idempotent: đã phản hồi rồi → trang chỉ hiện lại trạng thái đã chọn, không cho đổi lần 2 (terminal, cùng tinh thần Approval Engine).
+
+**Routes (public, ngoài `auth:sanctum`):**
+```
+GET  /api/careers/interview-invitations/{interviewInvitation}   (signed; trả info để FE render trang xác nhận)
+POST /api/careers/interview-invitations/{interviewInvitation}/respond  (signed; body: { response: confirm|decline })
+
+GET  /api/careers/job-applications/{jobApplication}/offer        (signed; trả info offer)
+POST /api/careers/job-applications/{jobApplication}/offer/respond (signed; body: { response: accepted|declined })
+```
+
+Mail dùng Blade mail view (HTML thật, không phải `MailMessage` markdown mặc định của Notification) vì cần layout + nút bấm tuỳ chỉnh — `InterviewInvitationMail` nêu ở 10.3, `JobOfferMail` nêu ở 10.4b, không cần lib mới.
+
+### 10.4. Interviewer = người được tag lúc mời phỏng vấn (điểm 3, chốt lại 2026-08-12)
+
+**Đổi so với thiết kế ban đầu:** không có hành động "forward hồ sơ cho PM" tách rời nữa. Insight từ user: người được CC vào mail mời phỏng vấn (`interviewer_ids` ở 10.3) **chính là** người sẽ phỏng vấn, và sau phỏng vấn **chính họ** là người hợp lý nhất để đánh giá — không cần 1 hành động "forward" riêng biệt, tách khỏi việc mời phỏng vấn. Nếu HR muốn hỏi ý kiến PM cho 1 vị trí gắn với project, chỉ cần tag PM đó làm 1 trong các `interviewer_ids` — không phải action riêng.
+
+**Vì sao lưu `employee_id` thay vì email thô (bảo mật hơn — điểm user nêu ra):** nếu FE gửi thẳng email string lên server để CC, server phải tin tưởng mù quáng bất kỳ chuỗi nào client gửi — rủi ro CC nhầm/CC ra ngoài hệ thống (lộ dữ liệu ứng viên cho người ngoài), và không có cách nào ràng buộc "ai được CC" với "ai được xem hồ sơ". Dùng `employee_id` giải quyết cả 2 vấn đề cùng lúc: (1) validate được bằng `Rule::exists('employees', 'id')`, giới hạn trong tập nhân sự thật; (2) **chính danh sách này trở thành cơ chế phân quyền** — 1 employee được xem chi tiết `job_application` + để lại đánh giá **khi và chỉ khi** họ có mặt trong `interview_interviewers` của lần mời phỏng vấn thuộc application đó. `JobApplicationPolicy::view()` mở rộng thêm nhánh này bên cạnh nhánh admin/HR đã có ở 10.3.
+
+**Luồng:** HR mời phỏng vấn (10.3) → server tạo `interview_invitations` + N row `interview_interviewers` (từ `interviewer_ids`) → event `InterviewerAssigned` → listener notify từng interviewer (database channel, mirror đúng 4 notification đã có trong app) → interviewer vào trang "Ứng viên cần đánh giá" (`GET /api/job-applications?interviewer_pending=1`, scope qua policy giống cách `pending_my_approval=1` của Approval Engine) → `PATCH /api/job-applications/{jobApplication}/evaluation { recommendation, feedback }` ghi vào đúng row `interview_interviewers` của chính họ. Vẫn thuần tham khảo — không block quyết định gì của HR/Admin.
+
+### 10.4b. Gửi offer cần Admin duyệt (chốt 2026-08-12) — tái dùng Approval Engine (Tier 1)
+
+**Đổi so với 10.0 ban đầu:** offer có lương → mức rủi ro/tầm quan trọng ngang **Level Promotion**, không phải flat-status nhẹ như reject/interview-invite ở 10.3. User yêu cầu: trước khi mail offer rời hệ thống, Admin phải thấy **toàn bộ** dữ liệu (hồ sơ ứng viên, đánh giá từng interviewer, đề xuất của HR) và duyệt. Đây đúng hình dạng bài toán Approval Engine đã được thiết kế cho (mục 4) — tái dùng thay vì tạo cơ chế riêng.
+
+- **`WorkflowType::JobOffer`** — case thứ 6 (bên cạnh `ProjectRoleChange` đã implement + 4 case để dành chỗ).
+- **`JobOfferApprovalWorkflow::steps()`** → `[ApprovalStepDefinition::systemAdmin()]` — đúng 1 bước, chỉ Admin (không phải chuỗi nhiều bước như Level Promotion) vì đây là quyết định tài chính/tuyển dụng cuối cùng, mirror đúng pattern `ApprovalStepDefinition::systemAdmin()` đã tồn tại làm fallback ở `RoleChangeApprovalWorkflow`.
+- **`ApplyJobOfferHandler::apply()`** — khi Admin approve: set `job_applications.status = Offered`, `offer_sent_at = now()`, rồi mới thật sự gửi `JobOfferMail` (kèm nút Accept/Decline signed URL, xem 10.3b) tới ứng viên. Nếu Admin reject → không gửi mail gì, `job_applications.status` **không đổi** (vẫn ở trạng thái trước đó, vd `Interviewed`) — HR sửa đề xuất và tạo `JobOfferRequest` mới nếu muốn thử lại; không cần cơ chế "revert status" vì status chưa từng bị đổi lúc submit (đúng nguyên tắc "không duplicate trạng thái ở 2 nơi" — trong lúc chờ duyệt, trạng thái chờ nằm ở `approval_requests.status`, không phải `job_applications.status`).
+- **`GET /job-offer-requests/{jobOfferRequest}`** (business detail, theo đúng khuôn Role Change ở mục 4) trả về đầy đủ: thông tin `applicant`/CV, toàn bộ `interview_interviewers` (ai đánh giá gì) qua chain `job_application → interview_invitations → interviewers → employee`, và đề xuất lương/notes của HR — đúng yêu cầu "gửi toàn bộ dữ liệu cho admin".
+- **Submit/approve/reject dùng lại nguyên route generic đã có**: `POST /job-offer-requests` (tạo + submit), listing qua `GET /api/approvals?workflow_type=job_offer`, quyết định qua `PATCH /api/approvals/{approval}` (`type: approve|reject`) — không thêm route mới cho phần approve, đúng tinh thần "chỉ cần đúng 5 mảnh, không đụng engine core" đã áp dụng cho Role Change (mục 4, 7.14).
+- **Ai được tạo `JobOfferRequest`:** cùng quyền HR ở 10.3 (admin hoặc manager thuộc phòng Nhân sự).
+
+### 10.5. API routes
+
+```
+# Public — KHÔNG auth:sanctum, có throttle + honeypot field + giới hạn mime/size CV
+GET  /api/careers/postings                          (chỉ status=published)
+GET  /api/careers/postings/{jobPosting:slug}         (404 nếu không published)
+POST /api/careers/postings/{jobPosting:slug}/apply   (multipart: applicant info + resume)
+
+# Nội bộ — auth:sanctum, HR/admin theo 10.3
+GET/POST         /api/job-postings
+GET/PATCH/DELETE /api/job-postings/{jobPosting:slug}          (PATCH status → trigger dispatch khi Draft→Published)
+GET               /api/job-postings/{jobPosting:slug}/applications?status=
+
+GET    /api/job-applications/{jobApplication}
+GET    /api/job-applications/{jobApplication}/resume          (stream, policy-gated)
+PATCH  /api/job-applications/{jobApplication}                  (xem 10.3 — status: interview_invited/rejected)
+GET    /api/job-applications?interviewer_pending=1              (queue "cần đánh giá" của interviewer, xem 10.4)
+PATCH  /api/job-applications/{jobApplication}/evaluation         (body: recommendation, feedback — chỉ interviewer của chính application đó)
+
+# Job Offer — tái dùng engine chung, xem 10.4b
+POST   /api/job-offer-requests                                   (body: job_application_id, proposed_salary, salary_currency, proposed_start_date, notes)
+GET    /api/job-offer-requests/{jobOfferRequest}                  (business detail: applicant + interviewer evaluations + đề xuất HR)
+GET    /api/approvals?workflow_type=job_offer&pending_my_approval=1   (queue duyệt của Admin — route generic có sẵn)
+PATCH  /api/approvals/{approval}                                  (type: approve|reject — route generic có sẵn)
+```
+
+### 10.6. Case bổ sung đã thảo luận — quyết định scope
+
+| Case | Quyết định | Vì sao |
+|---|---|---|
+| Pipeline trạng thái ứng viên đầy đủ (Submitted→...→Hired) | **Làm** | Chỉ là enum `status` đã thiết kế ở 10.1, không thêm bảng |
+| Chặn ứng tuyển trùng (cùng applicant + cùng posting) | **Làm** | `unique(applicant_id, job_posting_id)`, rẻ |
+| Chống spam form public (throttle IP, honeypot, giới hạn mime/size CV) | **Làm** | Endpoint public đầu tiên của app — bắt buộc, không phải nice-to-have |
+| Talent pool — tìm lại `rejected && talent_pool=true` cho tin mới | **Làm** | Chính là yêu cầu điểm 2, chỉ cần 1 filter query |
+| Email từ chối tự động (tuỳ chọn, HR tự bật) | **Làm, tối giản** | Candidate experience, effort thấp |
+| Interviewer (người được tag lúc mời PV) đánh giá ứng viên, advisory | **Làm** | Xem 10.4 — thay cho "forward cho PM" ban đầu, gắn liền với chính hành động mời phỏng vấn |
+| CC mời phỏng vấn lưu `employee_id`, resolve email phía server | **Làm** | Xem 10.4 — bảo mật hơn (không tin email thô từ client) + chính là cơ chế phân quyền xem hồ sơ |
+| Mail HTML có nút Accept/Decline (mời PV + offer) qua signed URL | **Làm** | Xem 10.3b — quyết định 2026-08-12, tái dùng Laravel signed URL có sẵn, không thêm dependency |
+| Gửi offer cần Admin duyệt trước (đủ hồ sơ + đánh giá interviewer + đề xuất HR) | **Làm — tái dùng Approval Engine** | Xem 10.4b — quyết định 2026-08-12, quyết định lương/tuyển dụng rủi ro ngang Level Promotion |
+| Duyệt tin đăng trước khi publish (Admin duyệt bài HR đăng) | **Bỏ (YAGNI)** | Chỉ 1 HR/manager thao tác, không có nhu cầu kiểm soát 2 lớp ở quy mô demo |
+| Phỏng vấn nhiều vòng, scorecard có cấu trúc từ nhiều interviewer | **Backlog** | `interview_invitations` đã để hở (1 application → nhiều invitation), nhưng scorecard form là effort riêng |
+| Offer letter PDF + e-signature pháp lý | **Backlog** | Khác với "mail offer + accept/decline" (đã làm, xem trên) — tạo văn bản có giá trị pháp lý là scope lớn hơn nhiều, ngoài phạm vi portfolio |
+| Referral tracking (nhân viên giới thiệu ứng viên) | **Bỏ** | Không được yêu cầu, không có tín hiệu cần |
+| Xoá/ẩn dữ liệu ứng viên reject sau N tháng (retention, GDPR-style) | **Ghi chú backlog** | Thực tế production luôn cần, ngoài scope portfolio |
+| Báo cáo funnel theo channel/posting | **Backlog** | Cần data tích luỹ đủ lớn mới có ý nghĩa demo |
+
+### 10.7. Phase breakdown (track độc lập — không phụ thuộc E.5/F/G)
+
+| Phase | Nội dung | Ước lượng |
+|---|---|---|
+| R1 | `job_postings` + `job_posting_channels` CRUD nội bộ + `JobPostingDispatcher`/`CompanyCareerPageChannel` + Policy | 4-5 ngày |
+| R2 | Public: `applicants`/`job_applications` + form apply (upload CV, throttle/honeypot, chặn trùng) + endpoint public listing/detail | 3-4 ngày |
+| R3 | HR review: mời phỏng vấn (`interviewer_ids` → `interview_interviewers`) + `InterviewInvitationMail`, reject + `talent_pool`, download CV policy-gated | 3-4 ngày |
+| R4 | Interviewer evaluation: trang "cần đánh giá" + `PATCH .../evaluation` + notification, mở rộng `JobApplicationPolicy::view` theo `interview_interviewers` | 2 ngày |
+| R5 | Job Offer workflow: `job_offer_requests` + `JobOfferApprovalWorkflow`/`ApplyJobOfferHandler` (tag vào registry có sẵn) + FE detail cho Admin | 4-5 ngày |
+| R6 | Mail HTML Accept/Decline qua signed URL (interview response + offer response) — xem 10.3b, phụ thuộc R3+R5 (cần mail đã tồn tại) | 2-3 ngày |
+
+**Tổng: ~18-23 ngày công**, độc lập với track A→I ngoại trừ R5 tái dùng trực tiếp hạ tầng Approval Engine (mục 4, Phase D/E) — cần Phase D đã xong (đã xong, xem 7.13).

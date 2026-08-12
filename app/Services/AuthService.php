@@ -54,7 +54,6 @@ class AuthService
             'task-delay-requests:update',
             'leave-requests:read',
             'leave-requests:create',
-            'leave-requests:update',
             'role-change-requests:read',
             'role-change-requests:create',
             'project-roles:read',

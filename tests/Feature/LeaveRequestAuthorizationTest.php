@@ -1,262 +1,186 @@
 <?php
 
-use App\Models\Department;
+use App\Enums\ProjectAssignmentStatus;
+use App\Enums\ProjectStatus;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Models\Project;
+use App\Models\ProjectAssignment;
+use App\Models\ProjectManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
-test('reviewLeaveRequest_managerOwnDepartment_approved', function () {
-    // Arrange
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    Sanctum::actingAs($manager, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'approved',
-    ]);
-
-    // Assert
-    $response->assertSuccessful()
-        ->assertJsonPath('data.status', 'approved')
-        ->assertJsonPath('data.reviewer_name', $manager->name);
-
-    $this->assertDatabaseHas('leave_requests', [
-        'id' => $leaveRequest->id,
-        'status' => 'approved',
-        'reviewed_by' => $manager->id,
-    ]);
-});
-
-test('reviewLeaveRequest_managerOwnDepartment_rejected', function () {
-    // Arrange
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    Sanctum::actingAs($manager, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'rejected',
-        'review_note' => 'Too many overlapping requests',
-    ]);
-
-    // Assert
-    $response->assertSuccessful()
-        ->assertJsonPath('data.status', 'rejected')
-        ->assertJsonPath('data.review_note', 'Too many overlapping requests');
-});
-
-test('reviewLeaveRequest_managerOtherDepartment_forbidden', function () {
-    // Arrange
-    $managerDepartment = Department::factory()->create();
-    $otherDepartment = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $managerDepartment->id]);
-    $otherEmployee = Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $otherEmployee->id]);
-    Sanctum::actingAs($manager, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'approved',
-    ]);
-
-    // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
-});
-
-test('reviewLeaveRequest_employeeToken_forbidden', function () {
-    // Arrange
-    $department = Department::factory()->create();
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $colleague = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $colleague->id]);
-    Sanctum::actingAs($employee, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'approved',
-    ]);
-
-    // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
-});
-
-test('updateLeaveRequest_employeeApprovesOwnRequest_forbidden', function () {
-    // Arrange - an employee must not be able to self-approve via the same endpoint a manager uses
-    $employee = Employee::factory()->create(['position' => 'employee']);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    Sanctum::actingAs($employee, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'approved',
-    ]);
-
-    // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
-});
-
-test('reviewLeaveRequest_alreadyReviewedRequest_forbidden', function () {
-    // Arrange
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id, 'status' => 'approved']);
-    Sanctum::actingAs($manager, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'rejected',
-    ]);
-
-    // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
-});
-
-test('reviewLeaveRequest_adminOtherDepartment_approved', function () {
-    // Arrange
-    $department = Department::factory()->create();
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    Sanctum::actingAs(Employee::factory()->create(['position' => 'admin']), ['*']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'approved',
-    ]);
-
-    // Assert
-    $response->assertSuccessful()
-        ->assertJsonPath('data.status', 'approved');
-});
-
-test('updateLeaveRequest_adminOverridesAlreadyReviewedRequestAnyDepartment_statusChanged', function () {
-    // Arrange - admin can change the status of any leave request regardless of its current
-    // status or the requester's department, unlike a manager who is limited to pending
-    // requests within their own department.
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create([
+/**
+ * @return array{employee: Employee, hrManager: Employee, pm: Employee, project: Project, leaveRequest: LeaveRequest}
+ */
+function setUpLeaveRequestForViewing(): array
+{
+    $hrManager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['position' => 'employee', 'manager_employee_id' => $hrManager->id]);
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    $project = Project::factory()->create(['status' => ProjectStatus::Active]);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id]);
+    ProjectAssignment::factory()->create([
+        'project_id' => $project->id,
         'employee_id' => $employee->id,
-        'status' => 'approved',
-        'reviewed_by' => $manager->id,
-        'reviewed_at' => now(),
+        'status' => ProjectAssignmentStatus::Active,
+        'assigned_by' => $pm->id,
     ]);
-    $admin = Employee::factory()->create(['position' => 'admin']);
-    Sanctum::actingAs($admin, ['*']);
+    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id, 'project_id' => $project->id]);
 
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'rejected',
-        'review_note' => 'Overturned after policy review',
-    ]);
+    return compact('employee', 'hrManager', 'pm', 'project', 'leaveRequest');
+}
 
-    // Assert
-    $response->assertSuccessful()
-        ->assertJsonPath('data.status', 'rejected')
-        ->assertJsonPath('data.reviewer_name', $admin->name)
-        ->assertJsonPath('data.review_note', 'Overturned after policy review');
-
-    $this->assertDatabaseHas('leave_requests', [
-        'id' => $leaveRequest->id,
-        'status' => 'rejected',
-        'reviewed_by' => $admin->id,
-    ]);
-});
-
-test('updateLeaveRequest_adminRevertsToPending_reviewFieldsCleared', function () {
-    // Arrange - only admins may send a request back to pending, and doing so should clear
-    // any prior review so the request genuinely reads as unreviewed again.
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create([
-        'employee_id' => $employee->id,
-        'status' => 'approved',
-        'reviewed_by' => $manager->id,
-        'reviewed_at' => now(),
-        'review_note' => 'Looks good',
-    ]);
-    Sanctum::actingAs(Employee::factory()->create(['position' => 'admin']), ['*']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'pending',
-    ]);
-
-    // Assert
-    $response->assertSuccessful()
-        ->assertJsonPath('data.status', 'pending')
-        ->assertJsonPath('data.reviewed_by', null)
-        ->assertJsonPath('data.reviewer_name', null)
-        ->assertJsonPath('data.review_note', null);
-
-    $this->assertDatabaseHas('leave_requests', [
-        'id' => $leaveRequest->id,
-        'status' => 'pending',
-        'reviewed_by' => null,
-        'review_note' => null,
-    ]);
-});
-
-test('updateLeaveRequest_managerRevertsToPending_validationError', function () {
-    // Arrange - non-admins must never be able to send a request back to pending
-    $department = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $department->id]);
-    $employee = Employee::factory()->create(['position' => 'employee', 'department_id' => $department->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id, 'status' => 'approved']);
-    Sanctum::actingAs($manager, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", [
-        'status' => 'pending',
-    ]);
-
-    // Assert
-    $response->assertUnprocessable()
-        ->assertJsonValidationErrors(['status'], 'errors');
-});
-
-test('cancelLeaveRequest_otherEmployeeRequest_forbidden', function () {
+test('viewLeaveRequest_ownRequest_allowed', function () {
     // Arrange
-    $employee = Employee::factory()->create(['position' => 'employee']);
-    $otherEmployee = Employee::factory()->create(['position' => 'employee']);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $otherEmployee->id]);
-    Sanctum::actingAs($employee, ['leave-requests:update']);
-
-    // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", ['status' => 'cancelled']);
-
-    // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
-});
-
-test('getLeaveRequest_managerOtherDepartment_forbidden', function () {
-    // Arrange
-    $managerDepartment = Department::factory()->create();
-    $otherDepartment = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $managerDepartment->id]);
-    $otherEmployee = Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $otherEmployee->id]);
-    Sanctum::actingAs($manager, ['leave-requests:read']);
+    ['employee' => $employee, 'leaveRequest' => $leaveRequest] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs($employee, ['leave-requests:read']);
 
     // Act
     $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
 
     // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
+    $response->assertSuccessful();
+});
+
+test('viewLeaveRequest_currentPmOfPickedProject_allowed', function () {
+    // Arrange
+    ['pm' => $pm, 'leaveRequest' => $leaveRequest] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs($pm, ['leave-requests:read']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
+
+    // Assert
+    $response->assertSuccessful();
+});
+
+test('viewLeaveRequest_currentDirectManager_allowed', function () {
+    // Arrange
+    ['hrManager' => $hrManager, 'leaveRequest' => $leaveRequest] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs($hrManager, ['leave-requests:read']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
+
+    // Assert
+    $response->assertSuccessful();
+});
+
+test('viewLeaveRequest_admin_allowed', function () {
+    // Arrange
+    ['leaveRequest' => $leaveRequest] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs(Employee::factory()->create(['position' => 'admin']), ['*']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
+
+    // Assert
+    $response->assertSuccessful();
+});
+
+test('viewLeaveRequest_unrelatedEmployee_forbidden', function () {
+    // Arrange
+    ['leaveRequest' => $leaveRequest] = setUpLeaveRequestForViewing();
+    $outsider = Employee::factory()->create(['position' => 'employee']);
+    Sanctum::actingAs($outsider, ['leave-requests:read']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('viewLeaveRequest_unrelatedManagerNeitherPmNorDirectManager_forbidden', function () {
+    // Arrange
+    ['leaveRequest' => $leaveRequest] = setUpLeaveRequestForViewing();
+    $unrelatedManager = Employee::factory()->create(['position' => 'manager']);
+    Sanctum::actingAs($unrelatedManager, ['leave-requests:read']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('viewLeaveRequest_noProjectPicked_onlyOwnerAndDirectManagerCanView', function () {
+    // Arrange - no project_id, so the "current PM" branch never applies
+    $hrManager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['position' => 'employee', 'manager_employee_id' => $hrManager->id]);
+    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id, 'project_id' => null]);
+    $unrelatedManager = Employee::factory()->create(['position' => 'manager']);
+    Sanctum::actingAs($unrelatedManager, ['leave-requests:read']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$leaveRequest->id}");
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('viewLeaveRequest_resolvedPmStepApproverNoLongerCurrentPm_stillAllowed', function () {
+    // Arrange - a step's approver_employee_id is locked in at submit time
+    // (ApprovalRequestService::submit()); if that person is later removed as the
+    // project's PM, they must still be able to view the request they can still legally
+    // act on via ApprovalRequestPolicy::canActOnStep() (which matches the stored id, not
+    // current PM status).
+    ['employee' => $employee, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->json('data');
+    ProjectManager::where('project_id', $project->id)->where('employee_id', $pm->id)->update(['end_date' => today()]);
+    Sanctum::actingAs($pm, ['leave-requests:read']);
+
+    // Act
+    $response = $this->getJson("/api/leave-requests/{$created['id']}");
+
+    // Assert
+    $response->assertSuccessful();
+});
+
+test('approveLeaveRequest_requesterCannotApproveOwnRequest_forbidden', function () {
+    // Arrange
+    ['employee' => $employee, 'project' => $project] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->json('data');
+    Sanctum::actingAs($employee, ['approvals:update']);
+
+    // Act
+    $response = $this->patchJson("/api/approvals/{$created['approval_request']['id']}", ['type' => 'approve']);
+
+    // Assert
+    $response->assertForbidden();
+});
+
+test('approveLeaveRequest_unresolvedApproverForActiveStep_forbidden', function () {
+    // Arrange - a manager who is neither the resolved PM nor the resolved HR approver
+    ['employee' => $employee, 'project' => $project] = setUpLeaveRequestForViewing();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->json('data');
+    $outsiderManager = Employee::factory()->create(['position' => 'manager']);
+    Sanctum::actingAs($outsiderManager, ['approvals:update']);
+
+    // Act
+    $response = $this->patchJson("/api/approvals/{$created['approval_request']['id']}", ['type' => 'approve']);
+
+    // Assert
+    $response->assertForbidden();
 });

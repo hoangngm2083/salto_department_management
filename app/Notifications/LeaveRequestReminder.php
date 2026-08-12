@@ -30,7 +30,7 @@ class LeaveRequestReminder extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject('Pending Leave Requests Need Review')
             ->greeting("Hi {$notifiable->name},")
-            ->line("Your department has {$this->total} pending {$requests} starting soon that {$verb} still awaiting your review.")
+            ->line("You have {$this->total} pending {$requests} starting soon that {$verb} still awaiting your review.")
             ->line('Please review them soon so they can be resolved before the leave begins.');
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Employee;
 
 use App\Enums\EmployeeStatus;
+use App\Models\Department;
 use App\Models\Employee;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -56,10 +57,13 @@ class UpsertEmployeeRequest extends FormRequest
                 Rule::in(['employee', 'manager', 'admin']),
             ],
             'current_level_id' => ['nullable', 'integer', 'exists:levels,id'],
+            // Direct management is an HR function in this system, not the employee's own
+            // department chain - manager_employee_id must resolve to someone in the HR
+            // department (config('departments.hr_slug')), never their functional dept head.
             'manager_employee_id' => [
                 'nullable',
                 'integer',
-                'exists:employees,id',
+                Rule::exists('employees', 'id')->where('department_id', $this->hrDepartmentId()),
                 function (string $attribute, mixed $value, Closure $fail) use ($employeeId): void {
                     if ($employeeId !== null && (int) $value === (int) $employeeId) {
                         $fail('An employee cannot be their own manager.');
@@ -68,5 +72,14 @@ class UpsertEmployeeRequest extends FormRequest
             ],
             'status' => ['nullable', Rule::enum(EmployeeStatus::class)],
         ];
+    }
+
+    /**
+     * Id of the department designated as HR (config('departments.hr_slug')), or an
+     * unreachable sentinel if that department isn't seeded - matching no employee ever.
+     */
+    private function hrDepartmentId(): int
+    {
+        return Department::query()->where('slug', config('departments.hr_slug'))->value('id') ?? 0;
     }
 }

@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'approval_request_id', 'step_order', 'approver_kind', 'approver_employee_id',
-    'required_permission', 'status', 'acted_by', 'acted_at', 'comment',
+    'required_permission', 'status', 'acted_by', 'acted_at', 'comment', 'reminder_sent_at',
 ])]
 class ApprovalStep extends Model
 {
@@ -41,6 +41,7 @@ class ApprovalStep extends Model
             'approver_kind' => ApproverKind::class,
             'status' => ApprovalStepStatus::class,
             'acted_at' => 'datetime',
+            'reminder_sent_at' => 'datetime',
         ];
     }
 

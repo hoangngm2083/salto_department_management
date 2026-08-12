@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\LeaveRequest;
 
+use App\Http\Resources\Approval\ApprovalRequestResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,17 +19,14 @@ class LeaveRequestResource extends JsonResource
             'id' => $this->id,
             'employee_id' => $this->employee_id,
             'employee_name' => $this->employee?->name,
-            'department_name' => $this->employee?->department?->name,
+            'project_id' => $this->project_id,
+            'project_name' => $this->project?->name,
+            'project_slug' => $this->project?->slug,
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
             'reason' => $this->reason,
-            'status' => $this->status->value,
-            'reviewed_by' => $this->reviewed_by,
-            'reviewer_name' => $this->reviewer?->name,
-            'reviewed_at' => $this->reviewed_at?->toISOString(),
-            'review_note' => $this->review_note,
             'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'approval_request' => new ApprovalRequestResource($this->whenLoaded('approvalRequest')),
         ];
     }
 }

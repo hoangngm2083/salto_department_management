@@ -437,7 +437,8 @@ test('createEmployee_withoutStatus_defaultsToActive', function () {
 test('updateEmployee_setsCurrentLevelAndManager_fieldsUpdated', function () {
     // Arrange
     $level = Level::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager']);
+    $hrDepartment = Department::factory()->create(['slug' => config('departments.hr_slug')]);
+    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $hrDepartment->id]);
     $employee = Employee::factory()->create(['position' => 'employee']);
 
     // Act
@@ -487,6 +488,23 @@ test('updateEmployee_managerEmployeeIdSelfReference_validationError', function (
     // Act
     $response = $this->putJson("/api/employees/{$employee->id}", [
         'manager_employee_id' => $employee->id,
+    ]);
+
+    // Assert
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['manager_employee_id'], 'errors');
+});
+
+test('updateEmployee_managerEmployeeIdOutsideHrDepartment_validationError', function () {
+    // Arrange
+    Department::factory()->create(['slug' => config('departments.hr_slug')]);
+    $nonHrDepartment = Department::factory()->create();
+    $nonHrManager = Employee::factory()->create(['position' => 'manager', 'department_id' => $nonHrDepartment->id]);
+    $employee = Employee::factory()->create(['position' => 'employee']);
+
+    // Act
+    $response = $this->putJson("/api/employees/{$employee->id}", [
+        'manager_employee_id' => $nonHrManager->id,
     ]);
 
     // Assert

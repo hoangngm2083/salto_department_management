@@ -14,17 +14,17 @@ const STATUS_TOAST_MESSAGES = {
 };
 
 // UpdateTaskDelayRequestStatusRequest only allows approved/rejected/cancelled
-// (no reverting to pending), unlike leave-requests.
+// (no reverting to pending).
 const ADMIN_ACTIONABLE_STATUSES = ['approved', 'rejected', 'cancelled'];
 const REVIEWER_ACTIONABLE_STATUSES = ['approved', 'rejected'];
 
 /**
- * Flat top-level list, mirroring LeaveRequestsListPage (mục 5: "giống hệt
- * leave-requests"). GetTaskDelayRequestsRequest scopes a manager to requests
- * on projects they actively manage plus any request they submitted
- * themselves, so every row a manager sees here is one they have authority
- * over - approve/reject shows for rows on their managed project(s), cancel
- * shows for rows they submitted themselves.
+ * Flat top-level list (mục 5: task delay requests stay a single-step flat-status
+ * resource, unlike Leave Request which migrated onto the Approval Engine in Phase E.5).
+ * GetTaskDelayRequestsRequest scopes a manager to requests on projects they actively
+ * manage plus any request they submitted themselves, so every row a manager sees here is
+ * one they have authority over - approve/reject shows for rows on their managed
+ * project(s), cancel shows for rows they submitted themselves.
  */
 export default function TaskDelayRequestsListPage() {
   const { user } = useAuth();

@@ -2,8 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\LeaveRequestStatus;
-use App\Models\Employee;
+use App\Enums\ApprovalStepStatus;
+use App\Enums\WorkflowType;
+use App\Models\ApprovalStep;
 use App\Models\LeaveRequest;
 use App\Notifications\LeaveRequestReminder;
 use Illuminate\Console\Attributes\Description;
@@ -14,58 +15,59 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 #[Signature('leave-requests:send-reminders')]
-#[Description('Notify department managers about pending leave requests whose start date is approaching.')]
+#[Description('Notify the resolved approver of each active leave-request approval step whose request start date is approaching.')]
 class SendLeaveRequestReminders extends Command
 {
     /**
      * Execute the console command.
+     *
+     * Reminders are now step-level (approval_steps.reminder_sent_at), not leave-request-level
+     * - the approver is always a specific resolved employee (the project's PM or the
+     * employee's direct manager/HR), never "the department's manager(s)" like before.
      */
     public function handle(): void
     {
-        $departmentTotals = $this->pendingReminderQuery()
-            ->join('employees', 'employees.id', '=', 'leave_requests.employee_id')
-            ->selectRaw('employees.department_id as department_id, count(*) as total')
-            ->groupBy('employees.department_id')
-            ->get();
+        $stepsByApprover = $this->pendingReminderQuery()
+            ->with('approverEmployee')
+            ->get()
+            ->groupBy('approver_employee_id');
 
-        if ($departmentTotals->isEmpty()) {
+        if ($stepsByApprover->isEmpty()) {
             return;
         }
 
-        $managersByDepartment = Employee::query()
-            ->where('position', 'manager')
-            ->whereIn('department_id', $departmentTotals->pluck('department_id'))
-            ->get()
-            ->groupBy('department_id');
+        foreach ($stepsByApprover as $steps) {
+            $approver = $steps->first()->approverEmployee;
 
-        foreach ($departmentTotals as $departmentTotal) {
-            $managers = $managersByDepartment->get($departmentTotal->department_id);
-
-            if (blank($managers)) {
-                Log::warning('Pending leave request reminder skipped: no department manager.', [
-                    'department_id' => $departmentTotal->department_id,
+            if ($approver === null) {
+                Log::warning('Pending leave request reminder skipped: step has no resolved approver.', [
+                    'approval_step_ids' => $steps->pluck('id')->all(),
                 ]);
 
                 continue;
             }
 
-            Notification::send($managers, new LeaveRequestReminder($departmentTotal->total));
+            Notification::send($approver, new LeaveRequestReminder($steps->count()));
         }
 
         $this->pendingReminderQuery()->update(['reminder_sent_at' => now()]);
     }
 
     /**
-     * Base query for pending leave requests within the reminder window that haven't been reminded yet.
+     * Base query for active leave-request approval steps within the reminder window that
+     * haven't been reminded yet.
      */
     private function pendingReminderQuery(): Builder
     {
-        return LeaveRequest::query()
-            ->where('leave_requests.status', LeaveRequestStatus::Pending)
-            ->whereNull('leave_requests.reminder_sent_at')
-            ->whereBetween('leave_requests.start_date', [
-                today(),
-                today()->addDays(config('leave-requests.reminder_days_before_start')),
-            ]);
+        return ApprovalStep::query()
+            ->where('status', ApprovalStepStatus::Active)
+            ->whereNull('reminder_sent_at')
+            ->whereHas('approvalRequest', fn (Builder $query) => $query
+                ->where('workflow_type', WorkflowType::LeaveRequest)
+                ->whereHasMorph('requestable', [LeaveRequest::class], fn (Builder $leaveQuery) => $leaveQuery
+                    ->whereBetween('start_date', [
+                        today(),
+                        today()->addDays(config('leave-requests.reminder_days_before_start')),
+                    ])));
     }
 }

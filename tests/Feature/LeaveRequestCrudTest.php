@@ -1,40 +1,140 @@
 <?php
 
-use App\Models\Department;
+use App\Enums\ProjectAssignmentStatus;
+use App\Enums\ProjectStatus;
+use App\Events\ApprovalRequestDecided;
+use App\Events\ApprovalStepActivated;
 use App\Models\Employee;
-use App\Models\LeaveRequest;
+use App\Models\Project;
+use App\Models\ProjectAssignment;
+use App\Models\ProjectManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
-test('createLeaveRequest_validPayload_created', function () {
+/**
+ * @return array{employee: Employee, hrManager: Employee, pm: Employee, project: Project, assignment: ProjectAssignment}
+ */
+function setUpLeaveRequestFixture(): array
+{
+    $hrManager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['position' => 'employee', 'manager_employee_id' => $hrManager->id]);
+    $pm = Employee::factory()->create(['position' => 'manager']);
+    $project = Project::factory()->create(['status' => ProjectStatus::Active]);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $pm->id]);
+    $assignment = ProjectAssignment::factory()->create([
+        'project_id' => $project->id,
+        'employee_id' => $employee->id,
+        'status' => ProjectAssignmentStatus::Active,
+        'assigned_by' => $pm->id,
+    ]);
+
+    return compact('employee', 'hrManager', 'pm', 'project', 'assignment');
+}
+
+test('createLeaveRequest_withActiveAssignment_submittedWithPmThenHrSteps', function () {
     // Arrange
-    $employee = Employee::factory()->create(['position' => 'employee']);
+    ['employee' => $employee, 'hrManager' => $hrManager, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestFixture();
     Sanctum::actingAs($employee, ['leave-requests:create']);
 
-    $payload = [
-        'start_date' => '2026-09-01',
-        'end_date' => '2026-09-03',
-        'reason' => 'Family trip',
-    ];
-
     // Act
-    $response = $this->postJson('/api/leave-requests', $payload);
+    $response = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ]);
 
     // Assert
     $response->assertCreated()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Leave request submitted successfully.')
         ->assertJsonPath('data.employee_id', $employee->id)
-        ->assertJsonPath('data.start_date', '2026-09-01')
-        ->assertJsonPath('data.end_date', '2026-09-03')
-        ->assertJsonPath('data.status', 'pending');
+        ->assertJsonPath('data.project_id', $project->id)
+        ->assertJsonPath('data.approval_request.status', 'submitted')
+        ->assertJsonCount(2, 'data.approval_request.steps')
+        ->assertJsonPath('data.approval_request.steps.0.approver_kind', 'project_manager')
+        ->assertJsonPath('data.approval_request.steps.0.approver_employee_id', $pm->id)
+        ->assertJsonPath('data.approval_request.steps.0.status', 'active')
+        ->assertJsonPath('data.approval_request.steps.1.approver_kind', 'direct_manager')
+        ->assertJsonPath('data.approval_request.steps.1.approver_employee_id', $hrManager->id)
+        ->assertJsonPath('data.approval_request.steps.1.status', 'pending');
 
     $this->assertDatabaseHas('leave_requests', [
         'employee_id' => $employee->id,
-        'status' => 'pending',
+        'project_id' => $project->id,
     ]);
+});
+
+test('createLeaveRequest_withoutActiveAssignment_submittedWithHrStepOnly', function () {
+    // Arrange
+    $hrManager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['position' => 'employee', 'manager_employee_id' => $hrManager->id]);
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+
+    // Act
+    $response = $this->postJson('/api/leave-requests', [
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'No project assignment yet',
+    ]);
+
+    // Assert
+    $response->assertCreated()
+        ->assertJsonPath('data.project_id', null)
+        ->assertJsonCount(1, 'data.approval_request.steps')
+        ->assertJsonPath('data.approval_request.steps.0.approver_kind', 'direct_manager')
+        ->assertJsonPath('data.approval_request.steps.0.approver_employee_id', $hrManager->id);
+});
+
+test('createLeaveRequest_employeeIsSoleActivePmOfPickedProject_pmStepSkippedHrOnly', function () {
+    // Arrange - the requester is themselves the picked project's only active PM; since HR is
+    // still a mandatory second gate, the PM step is dropped entirely rather than routed to
+    // SystemAdmin the way RoleChangeApprovalWorkflow would.
+    $hrManager = Employee::factory()->create(['position' => 'manager']);
+    $employee = Employee::factory()->create(['position' => 'manager', 'manager_employee_id' => $hrManager->id]);
+    $project = Project::factory()->create(['status' => ProjectStatus::Active]);
+    ProjectManager::factory()->create(['project_id' => $project->id, 'employee_id' => $employee->id]);
+    ProjectAssignment::factory()->create([
+        'project_id' => $project->id,
+        'employee_id' => $employee->id,
+        'status' => ProjectAssignmentStatus::Active,
+        'assigned_by' => $employee->id,
+    ]);
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+
+    // Act
+    $response = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(6)->toDateString(),
+        'reason' => 'Solo PM taking a break',
+    ]);
+
+    // Assert
+    $response->assertCreated()
+        ->assertJsonCount(1, 'data.approval_request.steps')
+        ->assertJsonPath('data.approval_request.steps.0.approver_kind', 'direct_manager')
+        ->assertJsonPath('data.approval_request.steps.0.approver_employee_id', $hrManager->id);
+});
+
+test('createLeaveRequest_managerEmployeeIdNull_hrStepFallsBackToSystemAdmin', function () {
+    // Arrange - topmost employee, no manager at all
+    $employee = Employee::factory()->create(['position' => 'employee', 'manager_employee_id' => null]);
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+
+    // Act
+    $response = $this->postJson('/api/leave-requests', [
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(6)->toDateString(),
+        'reason' => 'No manager on file',
+    ]);
+
+    // Assert
+    $response->assertCreated()
+        ->assertJsonCount(1, 'data.approval_request.steps')
+        ->assertJsonPath('data.approval_request.steps.0.approver_kind', 'system_admin')
+        ->assertJsonPath('data.approval_request.steps.0.approver_employee_id', null);
 });
 
 test('createLeaveRequest_endDateBeforeStartDate_validationError', function () {
@@ -49,9 +149,7 @@ test('createLeaveRequest_endDateBeforeStartDate_validationError', function () {
     ]);
 
     // Assert
-    $response->assertUnprocessable()
-        ->assertJsonPath('success', false)
-        ->assertJsonValidationErrors(['end_date'], 'errors');
+    $response->assertUnprocessable()->assertJsonValidationErrors(['end_date'], 'errors');
 });
 
 test('createLeaveRequest_missingRequiredFields_validationError', function () {
@@ -62,63 +160,92 @@ test('createLeaveRequest_missingRequiredFields_validationError', function () {
     $response = $this->postJson('/api/leave-requests', []);
 
     // Assert
-    $response->assertUnprocessable()
-        ->assertJsonValidationErrors(['start_date', 'end_date', 'reason'], 'errors');
+    $response->assertUnprocessable()->assertJsonValidationErrors(['start_date', 'end_date', 'reason'], 'errors');
 });
 
-test('getLeaveRequests_employee_scopedToOwn', function () {
+test('createLeaveRequest_projectIdNotOwnActiveAssignment_validationError', function () {
     // Arrange
     $employee = Employee::factory()->create(['position' => 'employee']);
-    $otherEmployee = Employee::factory()->create(['position' => 'employee']);
-    LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    LeaveRequest::factory()->create(['employee_id' => $otherEmployee->id]);
-    Sanctum::actingAs($employee, ['leave-requests:read']);
+    $unrelatedProject = Project::factory()->create();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
 
     // Act
-    $response = $this->getJson('/api/leave-requests');
+    $response = $this->postJson('/api/leave-requests', [
+        'project_id' => $unrelatedProject->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(6)->toDateString(),
+        'reason' => 'Not actually on this project',
+    ]);
 
     // Assert
-    $response->assertSuccessful();
-
-    $employeeIds = collect($response->json('data.data'))->pluck('employee_id')->unique()->values()->all();
-
-    expect($employeeIds)->toBe([$employee->id]);
+    $response->assertUnprocessable()->assertJsonValidationErrors(['project_id'], 'errors');
 });
 
-test('getLeaveRequests_manager_scopedToDepartment', function () {
+test('createLeaveRequest_hasActiveAssignmentButProjectIdOmitted_validationError', function () {
     // Arrange
-    $managerDepartment = Department::factory()->create();
-    $otherDepartment = Department::factory()->create();
-    $manager = Employee::factory()->create(['position' => 'manager', 'department_id' => $managerDepartment->id]);
-    $ownTeamEmployee = Employee::factory()->create(['position' => 'employee', 'department_id' => $managerDepartment->id]);
-    $otherTeamEmployee = Employee::factory()->create(['position' => 'employee', 'department_id' => $otherDepartment->id]);
-    LeaveRequest::factory()->create(['employee_id' => $ownTeamEmployee->id]);
-    LeaveRequest::factory()->create(['employee_id' => $otherTeamEmployee->id]);
-    Sanctum::actingAs($manager, ['leave-requests:read']);
+    ['employee' => $employee] = setUpLeaveRequestFixture();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
 
     // Act
-    $response = $this->getJson('/api/leave-requests');
+    $response = $this->postJson('/api/leave-requests', [
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(6)->toDateString(),
+        'reason' => 'Forgot to pick a project',
+    ]);
 
     // Assert
-    $response->assertSuccessful();
-
-    $employeeIds = collect($response->json('data.data'))->pluck('employee_id')->unique()->values()->all();
-
-    expect($employeeIds)->toBe([$ownTeamEmployee->id]);
+    $response->assertUnprocessable()->assertJsonValidationErrors(['project_id'], 'errors');
 });
 
-test('getLeaveRequests_admin_allReturned', function () {
+test('createLeaveRequest_overlappingPendingRequest_validationError', function () {
     // Arrange
-    LeaveRequest::factory()->count(2)->create();
-    Sanctum::actingAs(Employee::factory()->create(['position' => 'admin']), ['*']);
+    $employee = Employee::factory()->create(['position' => 'employee']);
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $this->postJson('/api/leave-requests', [
+        'start_date' => '2026-09-01',
+        'end_date' => '2026-09-05',
+        'reason' => 'First request',
+    ])->assertCreated();
 
     // Act
-    $response = $this->getJson('/api/leave-requests');
+    $response = $this->postJson('/api/leave-requests', [
+        'start_date' => '2026-09-03',
+        'end_date' => '2026-09-08',
+        'reason' => 'Overlaps the first',
+    ]);
 
     // Assert
-    $response->assertSuccessful();
+    $response->assertUnprocessable()->assertJsonValidationErrors(['start_date'], 'errors');
+});
 
-    expect($response->json('data.data'))->toHaveCount(2);
+test('createLeaveRequest_overlappingAlreadyAppliedRequest_validationError', function () {
+    // Arrange - requesting leave overlapping dates already fully approved (Applied) is
+    // just as invalid as overlapping another still-pending request.
+    ['employee' => $employee, 'hrManager' => $hrManager, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestFixture();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => '2026-09-01',
+        'end_date' => '2026-09-05',
+        'reason' => 'First request',
+    ])->json('data');
+    $approvalId = $created['approval_request']['id'];
+    Sanctum::actingAs($pm, ['approvals:update']);
+    $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'approve'])->assertSuccessful();
+    Sanctum::actingAs($hrManager, ['approvals:update']);
+    $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'approve'])->assertJsonPath('data.status', 'applied');
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+
+    // Act
+    $response = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => '2026-09-03',
+        'end_date' => '2026-09-08',
+        'reason' => 'Overlaps the already-applied leave',
+    ]);
+
+    // Assert
+    $response->assertUnprocessable()->assertJsonValidationErrors(['start_date'], 'errors');
 });
 
 test('getLeaveRequest_unknownId_notFound', function () {
@@ -134,36 +261,97 @@ test('getLeaveRequest_unknownId_notFound', function () {
         ->assertJsonPath('message', 'Resource not found.');
 });
 
-test('cancelLeaveRequest_ownPendingRequest_cancelled', function () {
+test('leaveRequest_approvedThroughBothSteps_applied', function () {
     // Arrange
-    $employee = Employee::factory()->create(['position' => 'employee']);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    Sanctum::actingAs($employee, ['leave-requests:update']);
+    ['employee' => $employee, 'hrManager' => $hrManager, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestFixture();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->json('data');
+    $approvalId = $created['approval_request']['id'];
+
+    // Act - PM approves first
+    Sanctum::actingAs($pm, ['approvals:update']);
+    $afterPm = $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'approve']);
+
+    // Assert - still in review, HR step now active
+    $afterPm->assertSuccessful()
+        ->assertJsonPath('data.status', 'in_review')
+        ->assertJsonPath('data.steps.1.status', 'active');
+
+    // Act - HR approves second (last step)
+    Sanctum::actingAs($hrManager, ['approvals:update']);
+    $afterHr = $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'approve']);
+
+    // Assert
+    $afterHr->assertSuccessful()->assertJsonPath('data.status', 'applied');
+});
+
+test('leaveRequest_rejectedAtPmStep_hrStepNeverActivated', function () {
+    // Arrange
+    ['employee' => $employee, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestFixture();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->json('data');
+    $approvalId = $created['approval_request']['id'];
+    Sanctum::actingAs($pm, ['approvals:update']);
 
     // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", ['status' => 'cancelled']);
+    $response = $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'reject', 'comment' => 'Bad timing, project deadline this week.']);
 
     // Assert
     $response->assertSuccessful()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('data.status', 'cancelled');
-
-    $this->assertDatabaseHas('leave_requests', [
-        'id' => $leaveRequest->id,
-        'status' => 'cancelled',
-    ]);
+        ->assertJsonPath('data.status', 'rejected')
+        ->assertJsonPath('data.steps.1.status', 'pending');
 });
 
-test('cancelLeaveRequest_alreadyApprovedRequest_forbidden', function () {
+test('createLeaveRequest_submitted_dispatchesApprovalStepActivatedForPm', function () {
     // Arrange
-    $employee = Employee::factory()->create(['position' => 'employee']);
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id, 'status' => 'approved']);
-    Sanctum::actingAs($employee, ['leave-requests:update']);
+    Event::fake([ApprovalStepActivated::class]);
+    ['employee' => $employee, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestFixture();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
 
     // Act
-    $response = $this->patchJson("/api/leave-requests/{$leaveRequest->id}", ['status' => 'cancelled']);
+    $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->assertCreated();
 
     // Assert
-    $response->assertForbidden()
-        ->assertJsonPath('message', 'Forbidden.');
+    Event::assertDispatched(ApprovalStepActivated::class, fn ($event) => $event->step->approver_employee_id === $pm->id && $event->step->step_order === 1
+    );
+});
+
+test('leaveRequest_appliedOnLastStep_dispatchesApprovalRequestDecided', function () {
+    // Arrange
+    ['employee' => $employee, 'hrManager' => $hrManager, 'pm' => $pm, 'project' => $project] = setUpLeaveRequestFixture();
+    Sanctum::actingAs($employee, ['leave-requests:create']);
+    $created = $this->postJson('/api/leave-requests', [
+        'project_id' => $project->id,
+        'start_date' => now()->addDays(5)->toDateString(),
+        'end_date' => now()->addDays(7)->toDateString(),
+        'reason' => 'Family trip',
+    ])->json('data');
+    $approvalId = $created['approval_request']['id'];
+    Sanctum::actingAs($pm, ['approvals:update']);
+    $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'approve'])->assertSuccessful();
+    Event::fake([ApprovalRequestDecided::class]);
+    Sanctum::actingAs($hrManager, ['approvals:update']);
+
+    // Act
+    $this->patchJson("/api/approvals/{$approvalId}", ['type' => 'approve'])->assertSuccessful();
+
+    // Assert
+    Event::assertDispatched(ApprovalRequestDecided::class, fn ($event) => $event->approval->id === $approvalId
+        && $event->approval->status->value === 'applied'
+    );
 });

@@ -16,26 +16,6 @@ const APPROVAL_DECIDED_OUTCOME_PHRASES = {
 function NotificationText({ notification }) {
   const { type, data } = notification;
 
-  if (type === 'LeaveRequestSubmitted') {
-    return (
-      <span className="text-gray-700">
-        <strong className="font-medium text-gray-900">{data.employee_name}</strong> vừa gửi yêu cầu nghỉ phép từ{' '}
-        {data.start_date} đến {data.end_date}.
-      </span>
-    );
-  }
-
-  if (type === 'LeaveRequestReviewed') {
-    const statusLabel = data.status === 'approved' ? 'được duyệt' : 'bị từ chối';
-
-    return (
-      <span className="text-gray-700">
-        Yêu cầu nghỉ phép của bạn đã <strong className="font-medium text-gray-900">{statusLabel}</strong> bởi{' '}
-        {data.reviewed_by}.
-      </span>
-    );
-  }
-
   if (type === 'ApprovalStepActivated') {
     const workflowLabel = WORKFLOW_TYPE_LABELS[data.workflow_type] ?? data.workflow_type;
 

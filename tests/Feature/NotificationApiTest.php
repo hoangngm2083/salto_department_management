@@ -1,17 +1,33 @@
 <?php
 
+use App\Models\ApprovalRequest;
+use App\Models\ApprovalStep;
 use App\Models\Employee;
-use App\Models\LeaveRequest;
-use App\Notifications\LeaveRequestSubmitted;
+use App\Notifications\ApprovalStepActivated;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
+/**
+ * Reuses $employee for every FK slot on the approval/step fixture (rather than letting
+ * ApprovalRequestFactory/ApprovalStepFactory spin up their own default Employee::factory()
+ * relations) - this helper is called in tight loops below, and each unnecessary extra
+ * employee eats into Faker's shared unique-email pool across the full test suite run.
+ */
 function notifyEmployee(Employee $employee): void
 {
-    $leaveRequest = LeaveRequest::factory()->create(['employee_id' => $employee->id]);
-    $employee->notify(new LeaveRequestSubmitted($leaveRequest));
+    $approval = ApprovalRequest::factory()->create([
+        'requestable_type' => Employee::class,
+        'requestable_id' => $employee->id,
+        'requested_by' => $employee->id,
+        'subject_employee_id' => $employee->id,
+    ]);
+    $step = ApprovalStep::factory()->create([
+        'approval_request_id' => $approval->id,
+        'approver_employee_id' => $employee->id,
+    ]);
+    $employee->notify(new ApprovalStepActivated($approval, $step));
 }
 
 test('getNotifications_unreadCount_reflectsTrueTotalNotJustCurrentPage', function () {
