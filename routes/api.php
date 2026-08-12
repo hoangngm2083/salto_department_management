@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\ImportController;
+use App\Http\Controllers\Api\V1\JobPostingController;
 use App\Http\Controllers\Api\V1\LeaveRequestController;
 use App\Http\Controllers\Api\V1\LevelController;
 use App\Http\Controllers\Api\V1\NotificationController;
@@ -124,6 +125,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middlewareFor('store', 'abilities:project-roles:create')
         ->middlewareFor('update', 'abilities:project-roles:update')
         ->middlewareFor('destroy', 'abilities:project-roles:delete');
+
+    Route::apiResource('job-postings', JobPostingController::class)
+        ->scoped(['job_posting' => 'slug'])
+        ->middlewareFor('index', 'abilities:job-postings:read')
+        ->middlewareFor('show', 'abilities:job-postings:read')
+        ->middlewareFor('store', 'abilities:job-postings:create')
+        ->middlewareFor('update', 'abilities:job-postings:update')
+        ->middlewareFor('destroy', 'abilities:job-postings:delete');
 
     Route::apiResource('leave-requests', LeaveRequestController::class)
         ->only(['store', 'show'])

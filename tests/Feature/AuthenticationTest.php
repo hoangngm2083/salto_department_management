@@ -103,6 +103,10 @@ test('login_managerCredentials_abilitiesPersisted', function () {
         'departments:update',
         'levels:read',
         'projects:manage-assignments',
+        'job-postings:read',
+        'job-postings:create',
+        'job-postings:update',
+        'job-postings:delete',
     ]);
 });
 

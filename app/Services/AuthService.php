@@ -73,6 +73,10 @@ class AuthService
             'departments:update',
             'levels:read',
             'projects:manage-assignments',
+            'job-postings:read',
+            'job-postings:create',
+            'job-postings:update',
+            'job-postings:delete',
         ];
 
         return match ($employee->position) {

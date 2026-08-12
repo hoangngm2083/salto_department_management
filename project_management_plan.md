@@ -891,7 +891,7 @@ PATCH  /api/approvals/{approval}                                  (type: approve
 
 | Phase | Nội dung | Ước lượng |
 |---|---|---|
-| R1 | `job_postings` + `job_posting_channels` CRUD nội bộ + `JobPostingDispatcher`/`CompanyCareerPageChannel` + Policy | 4-5 ngày |
+| R1 ✅ (2026-08-12) | `job_postings` + `job_posting_channels` CRUD nội bộ + `JobPostingDispatcher`/`CompanyCareerPageChannel` + Policy | 4-5 ngày |
 | R2 | Public: `applicants`/`job_applications` + form apply (upload CV, throttle/honeypot, chặn trùng) + endpoint public listing/detail | 3-4 ngày |
 | R3 | HR review: mời phỏng vấn (`interviewer_ids` → `interview_interviewers`) + `InterviewInvitationMail`, reject + `talent_pool`, download CV policy-gated | 3-4 ngày |
 | R4 | Interviewer evaluation: trang "cần đánh giá" + `PATCH .../evaluation` + notification, mở rộng `JobApplicationPolicy::view` theo `interview_interviewers` | 2 ngày |
@@ -899,3 +899,19 @@ PATCH  /api/approvals/{approval}                                  (type: approve
 | R6 | Mail HTML Accept/Decline qua signed URL (interview response + offer response) — xem 10.3b, phụ thuộc R3+R5 (cần mail đã tồn tại) | 2-3 ngày |
 
 **Tổng: ~18-23 ngày công**, độc lập với track A→I ngoại trừ R5 tái dùng trực tiếp hạ tầng Approval Engine (mục 4, Phase D/E) — cần Phase D đã xong (đã xong, xem 7.13).
+
+### 10.8. Ghi chú triển khai Phase R1 (đã xong 2026-08-12)
+
+Implement đúng theo 10.1-10.2: 2 bảng (`job_postings`, `job_posting_channels`), CRUD nội bộ mirror `ProjectRoleController`/`ProjectRoleService` (Gate::authorize trong controller, FormRequest::authorize() luôn `true`), config-map dispatch mirror `ImportStrategyResolver` (`app/Services/Recruitment/{Contracts/JobPostingChannel.php, ChannelDispatchResult.php, Channels/CompanyCareerPageChannel.php, JobPostingDispatcher.php}`), `JobPostingPolicy` mirror check HR-department của `UpsertEmployeeRequest::hrDepartmentId()`. Ability mới `job-postings:{read,create,update,delete}` thêm vào `$managerAbilities` (không thêm cho employee — Recruitment nội bộ chỉ HR/admin, đúng 10.3).
+
+**3 lỗi phát hiện qua `code-reviewer` (REQUEST CHANGES ở vòng review đầu), đã sửa trước khi merge:**
+- **Tạo job posting với `status=published` trực tiếp bỏ qua transition logic** (không set `published_at`, không dispatch channel nào) — `JobPostingService::upsert()` giờ luôn ép `status = Draft` ở nhánh tạo mới bất kể client gửi gì, mirror đúng cách `TaskService::create()` ép `status = Todo`.
+- **`Closed`/`Cancelled` là trạng thái chưa bị khoá** — có thể PATCH ngược về `Published` (hoặc bất kỳ status nào khác), để lại state mâu thuẫn (`closed_at` đã set nhưng `status=published`, không dispatch lại). Sửa bằng 1 validation rule dạng closure trong `UpsertJobPostingRequest` chặn đổi `status` một khi posting đã ở `Closed`/`Cancelled` — cùng triết lý "terminal state" đã dùng cho luồng accept/decline qua signed URL ở 10.3b.
+- **List (`GET /job-postings`) thiếu key `channels`** trong khi `show`/`update` có (do `getPaginated()` không eager-load quan hệ `channels`, Resource dùng `whenLoaded()` nên tự lược field khi chưa load) — thêm `->with('channels')` vào `getPaginated()`; hợp lý vì bị chặn bởi số channel đang bật (hiện chỉ 1).
+- Đồng thời thêm `unique(['job_posting_id', 'channel'])` cho `job_posting_channels` (trước đó chỉ có index thường) để khớp đúng khoá tự nhiên mà `JobPostingDispatcher::dispatch()` dùng trong `updateOrCreate()` — migration được sửa trực tiếp (chưa từng deploy ngoài phiên này) rồi `migrate:rollback --step=2` + `migrate` lại trên DB dev, không tạo migration alter riêng.
+
+**`web-performance-auditor`** (quick-mode, source-only, không có Lighthouse/CrUX vì đây là API backend thuần) không tìm thấy Critical/High/Medium nào — chỉ 1 Low (eager-load `channels` không điều kiện, chấp nhận được vì hiện chỉ có 1 channel) + 2 Info (dispatch đồng bộ trên request thread — vô hại vì `CompanyCareerPageChannel` không I/O, nhưng đã thêm comment nhắc queue hoá khi có channel thật gọi HTTP; index cho cursor pagination kết hợp status filter — thuần lý thuyết, không cần sửa ở quy mô hiện tại).
+
+**Test:** `tests/Feature/JobPostingCrudTest.php` (26 test: CRUD, validation, ma trận phân quyền HR-manager/non-HR-manager/employee, business rule Draft→Published dispatch + idempotency, Closed/Cancelled `closed_at`, filter list) + `tests/Unit/JobPostingDispatcherTest.php` (2 test: idempotency của `updateOrCreate`). `AuthenticationTest::login_managerCredentials_abilitiesPersisted` cập nhật thêm 4 ability string mới. Toàn bộ suite (535 test) pass sau khi sửa cả 3 điểm review; `vendor/bin/pint --dirty` sạch. Đã migrate 2 bảng mới lên DB dev MySQL (rollback + re-migrate 1 lần sau khi thêm unique constraint).
+
+**Chưa làm** (đúng scope R1, để dành R2+): route public `/api/careers/*`, `applicants`/`job_applications`, FE (chưa có UI Recruitment nào — sẽ thiết kế khi làm tới R2/R3 theo đúng tinh thần 7.3).
