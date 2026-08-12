@@ -1,18 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { createRoleChangeRequest } from '../api/roleChangeRequests';
-import { listProjectRoles } from '../api/projectRoles';
 import { ROLE_CHANGE_MODE_LABELS } from '../lib/workflow-type';
 
 /**
  * Submits a Phase E role change request (ADD/REPLACE/REMOVE) for one project assignment.
  * "Current role" options come from the assignment's own active role periods (already known,
- * no extra fetch); "new role" options come from the full active project_roles list, minus
- * whatever's already active on the assignment - mirrors the ADD/REPLACE server-side rule that
- * a target role can't already be active. Approval/status is never shown here - this only
- * creates the request; its progress is tracked on the /approvals page.
+ * no extra fetch); "new role" options come from `roleOptions` - the full active project_roles
+ * list, fetched once by the parent `AssignmentsPanel` and shared across every row/modal rather
+ * than refetched on each open - minus whatever's already active on the assignment, mirroring
+ * the ADD/REPLACE server-side rule that a target role can't already be active. Approval/status
+ * is never shown here - this only creates the request; its progress is tracked on the
+ * /approvals page.
  */
-export default function RoleChangeRequestModal({ assignment, onClose, onCreated }) {
+export default function RoleChangeRequestModal({ assignment, onClose, onCreated, roleOptions, rolesLoading }) {
   const activeRolePeriods = assignment.role_periods.filter((period) => !period.end_date);
   const activeRoleIds = activeRolePeriods.map((period) => period.project_role_id);
 
@@ -20,14 +21,7 @@ export default function RoleChangeRequestModal({ assignment, onClose, onCreated 
   const [fromRoleId, setFromRoleId] = useState('');
   const [toRoleId, setToRoleId] = useState('');
   const [reason, setReason] = useState('');
-  const [roleOptions, setRoleOptions] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    listProjectRoles({ status: 'active', per_page: 100 })
-      .then((res) => setRoleOptions(res.data))
-      .catch(() => {});
-  }, []);
 
   function handleModeChange(nextMode) {
     setMode(nextMode);
@@ -112,11 +106,12 @@ export default function RoleChangeRequestModal({ assignment, onClose, onCreated 
               <span className="mb-1 block text-sm font-medium text-gray-700">Vai trò mới</span>
               <select
                 required
+                disabled={rolesLoading}
                 value={toRoleId}
                 onChange={(e) => setToRoleId(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
               >
-                <option value="">Chọn vai trò...</option>
+                <option value="">{rolesLoading ? 'Đang tải vai trò...' : 'Chọn vai trò...'}</option>
                 {toRoleOptions.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.name}

@@ -9,9 +9,12 @@ use App\Models\Project;
 use App\Models\ProjectAssignment;
 use App\Models\ProjectManager;
 use App\Models\ProjectRole;
+use App\Notifications\ApprovalStepActivated as ApprovalStepActivatedNotification;
 use App\Services\ProjectAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
@@ -85,6 +88,54 @@ test('createRoleChangeRequest_projectManagerOnBehalf_submitted', function () {
     // Assert - the requester is also the sole active PM, so the workflow routes to admin
     // instead of a step only the requester themselves could act on.
     $response->assertCreated()->assertJsonPath('data.approval_request.steps.0.approver_kind', 'system_admin');
+});
+
+test('createRoleChangeRequest_fallsBackToSystemAdmin_allAdminsNotified', function () {
+    // Arrange - requester is the sole active PM, so RoleChangeApprovalWorkflow falls back to
+    // a SystemAdmin step, which has no single resolved approver_employee_id.
+    Notification::fake();
+    ['pm' => $pm, 'assignment' => $assignment] = setUpRoleChangeFixture();
+    $admin = Employee::factory()->create(['position' => 'admin']);
+    $otherAdmin = Employee::factory()->create(['position' => 'admin']);
+    $roleB = ProjectRole::factory()->create();
+    Sanctum::actingAs($pm, ['role-change-requests:create']);
+
+    // Act
+    $this->postJson('/api/role-change-requests', [
+        'project_assignment_id' => $assignment->id,
+        'change_mode' => 'add',
+        'to_project_role_id' => $roleB->id,
+        'reason' => 'Promoting to Tech Lead work.',
+    ])->assertCreated();
+
+    // Assert - every admin employee is notified, not just the first one found.
+    Notification::assertSentTo($admin, ApprovalStepActivatedNotification::class);
+    Notification::assertSentTo($otherAdmin, ApprovalStepActivatedNotification::class);
+    Notification::assertNotSentTo($pm, ApprovalStepActivatedNotification::class);
+});
+
+test('createRoleChangeRequest_fallsBackToSystemAdminWithNoAdmins_nothingSentNoError', function () {
+    // Arrange
+    Notification::fake();
+    Log::spy();
+    ['pm' => $pm, 'assignment' => $assignment] = setUpRoleChangeFixture();
+    $roleB = ProjectRole::factory()->create();
+    Sanctum::actingAs($pm, ['role-change-requests:create']);
+
+    // Act
+    $response = $this->postJson('/api/role-change-requests', [
+        'project_assignment_id' => $assignment->id,
+        'change_mode' => 'add',
+        'to_project_role_id' => $roleB->id,
+        'reason' => 'Promoting to Tech Lead work.',
+    ]);
+
+    // Assert
+    $response->assertCreated();
+    Notification::assertNothingSent();
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn ($message) => $message === 'Approval step activated for SystemAdmin approver but no admin employees exist.');
 });
 
 test('createRoleChangeRequest_unrelatedManagerNotPm_forbidden', function () {

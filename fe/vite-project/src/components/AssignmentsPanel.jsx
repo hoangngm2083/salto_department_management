@@ -9,6 +9,7 @@ import {
 } from '../api/projectAssignments';
 import { listProjectRoles } from '../api/projectRoles';
 import { useAuth } from '../context/useAuth';
+import useAsyncResource from '../hooks/useAsyncResource';
 import useCursorList from '../hooks/useCursorList';
 import { getTimelineRange, getZoomedRange } from '../lib/timeline';
 import EmployeeMultiSelect from './EmployeeMultiSelect';
@@ -35,6 +36,14 @@ export default function AssignmentsPanel({ slug, project, canManage }) {
       fetcher: (params) => listProjectAssignments(slug, params),
       params: {},
     });
+
+  // Shared by every row's "add role" flow and the role-change request modal - fetched once
+  // per panel mount instead of once per open, since the active project-roles list is the
+  // same for all of them.
+  const { data: activeRolesResponse, loading: rolesLoading } = useAsyncResource({
+    fetcher: () => listProjectRoles({ status: 'active', per_page: 100 }),
+  });
+  const activeRoleOptions = activeRolesResponse?.data ?? [];
 
   const { start: overallStart, end: overallEnd } = getTimelineRange({
     boundStart: project?.start_date,
@@ -215,6 +224,9 @@ export default function AssignmentsPanel({ slug, project, canManage }) {
                 onEnd={() => handleEnd(assignment)}
                 onEndRole={(rolePeriod) => handleEndRole(assignment, rolePeriod)}
                 onAddRole={(roleId) => handleAddRole(assignment, roleId)}
+                onRoleChangeRequested={refresh}
+                roleOptions={activeRoleOptions}
+                rolesLoading={rolesLoading}
               />
             ))}
           </ul>
@@ -231,10 +243,21 @@ export default function AssignmentsPanel({ slug, project, canManage }) {
   );
 }
 
-function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, onEnd, onEndRole, onAddRole }) {
+function AssignmentRow({
+  assignment,
+  canManage,
+  ending,
+  rangeStart,
+  rangeEnd,
+  onEnd,
+  onEndRole,
+  onAddRole,
+  onRoleChangeRequested,
+  roleOptions,
+  rolesLoading,
+}) {
   const { user } = useAuth();
   const [showAddRole, setShowAddRole] = useState(false);
-  const [roleOptions, setRoleOptions] = useState([]);
   const [newRoleId, setNewRoleId] = useState('');
   const [addingRole, setAddingRole] = useState(false);
   const [showRoleChangeRequest, setShowRoleChangeRequest] = useState(false);
@@ -243,16 +266,10 @@ function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, on
   const activeRolePeriods = assignment.role_periods.filter((period) => !period.end_date);
   const endedRolePeriods = assignment.role_periods.filter((period) => period.end_date);
   const activeRoleIds = activeRolePeriods.map((period) => period.project_role_id);
+  const availableRoleOptions = roleOptions.filter((role) => !activeRoleIds.includes(role.id));
   // Matches RoleChangeRequestPolicy::create() on the backend: the assignment's own
   // employee (self-service) or the project's PM/admin (canManage) may request a change.
   const canRequestRoleChange = canManage || assignment.employee_id === user.id;
-
-  function openAddRole() {
-    setShowAddRole(true);
-    listProjectRoles({ status: 'active', per_page: 100 })
-      .then((res) => setRoleOptions(res.data.filter((role) => !activeRoleIds.includes(role.id))))
-      .catch(() => {});
-  }
 
   async function submitAddRole() {
     if (!newRoleId) {
@@ -307,7 +324,13 @@ function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, on
       </div>
 
       {showRoleChangeRequest && (
-        <RoleChangeRequestModal assignment={assignment} onClose={() => setShowRoleChangeRequest(false)} />
+        <RoleChangeRequestModal
+          assignment={assignment}
+          onClose={() => setShowRoleChangeRequest(false)}
+          onCreated={onRoleChangeRequested}
+          roleOptions={roleOptions}
+          rolesLoading={rolesLoading}
+        />
       )}
 
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -343,8 +366,9 @@ function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, on
         {canManage && isActive && !showAddRole && (
           <button
             type="button"
-            onClick={openAddRole}
-            className="rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100"
+            onClick={() => setShowAddRole(true)}
+            disabled={rolesLoading}
+            className="rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-xs text-gray-500 disabled:opacity-50 hover:bg-gray-100"
           >
             + Thêm vai trò
           </button>
@@ -359,7 +383,7 @@ function AssignmentRow({ assignment, canManage, ending, rangeStart, rangeEnd, on
             className="rounded-md border border-gray-300 px-2 py-1 text-xs"
           >
             <option value="">Chọn vai trò...</option>
-            {roleOptions.map((role) => (
+            {availableRoleOptions.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>

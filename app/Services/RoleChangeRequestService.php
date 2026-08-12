@@ -32,7 +32,11 @@ class RoleChangeRequestService
     public function create(Employee $actor, array $data): RoleChangeRequest
     {
         return DB::transaction(function () use ($actor, $data) {
-            $assignment = ProjectAssignment::query()->whereKey($data['project_assignment_id'])->lockForUpdate()->firstOrFail();
+            $assignment = ProjectAssignment::query()
+                ->with(['project:id,name,slug', 'employee:id,name'])
+                ->whereKey($data['project_assignment_id'])
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($assignment->status !== ProjectAssignmentStatus::Active) {
                 throw ValidationException::withMessages([
@@ -55,24 +59,30 @@ class RoleChangeRequestService
                 'created_by' => $actor->id,
             ]);
 
-            $this->approvalRequestService->submit(
+            // Reuse the already-loaded assignment (with project/employee) instead of letting
+            // the workflow lazy-load it again when resolving the approver.
+            $roleChangeRequest->setRelation('projectAssignment', $assignment);
+
+            $approvalRequest = $this->approvalRequestService->submit(
                 actor: $actor,
                 subjectEmployee: $assignment->employee,
                 requestable: $roleChangeRequest,
                 workflow: $this->workflows->get(WorkflowType::ProjectRoleChange),
             );
 
-            return $roleChangeRequest->load([
-                'projectAssignment.project:id,name,slug',
-                'projectAssignment.employee:id,name',
-                'fromRole:id,name',
-                'toRole:id,name',
-                'creator:id,name',
-                'approvalRequest.requester:id,name',
-                'approvalRequest.subjectEmployee:id,name',
-                'approvalRequest.steps.approverEmployee:id,name',
-                'approvalRequest.steps.actor:id,name',
-            ]);
+            // Everything below is already in memory from this same transaction - only the
+            // relations genuinely not fetched yet need a query, avoiding a full re-load of
+            // the assignment/project/creator/approval tree we just built.
+            $roleChangeRequest->setRelation('creator', $actor);
+            $roleChangeRequest->loadMissing(['fromRole:id,name', 'toRole:id,name']);
+
+            $approvalRequest->setRelation('requester', $actor);
+            $approvalRequest->setRelation('subjectEmployee', $assignment->employee);
+            $approvalRequest->load(['steps.approverEmployee:id,name', 'steps.actor:id,name']);
+
+            $roleChangeRequest->setRelation('approvalRequest', $approvalRequest);
+
+            return $roleChangeRequest;
         });
     }
 
