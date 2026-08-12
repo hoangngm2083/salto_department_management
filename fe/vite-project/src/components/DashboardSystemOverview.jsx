@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { listDepartments } from '../api/departments';
-import { listEmployees } from '../api/employees';
-import { listProjects } from '../api/projects';
+import { countEmployees } from '../api/employees';
 import useAsyncResource from '../hooks/useAsyncResource';
 import { PROJECT_STATUS_OPTIONS } from '../lib/project-status';
 import DashboardWidgetCard from './DashboardWidgetCard';
@@ -16,38 +15,51 @@ function formatCount(page) {
   return page.meta.next_cursor ? `${page.data.length}+` : String(page.data.length);
 }
 
-/** "Tổng quan hệ thống": admin-only counts across the whole app, clickable into the filtered list. */
-export default function DashboardSystemOverview() {
+/**
+ * "Tổng quan hệ thống": admin-only counts across the whole app, clickable
+ * into the filtered list. `projectsResource` is the "all projects with
+ * counts" fetch shared with `DashboardAtRiskProjects` (lifted to
+ * `DashboardPage` so both widgets don't each hit `GET /projects`).
+ */
+export default function DashboardSystemOverview({ projectsResource }) {
   const { data, loading, refreshing, error, refresh } = useAsyncResource({
     fetcher: () =>
-      Promise.all([
-        listDepartments({ status: 'active', per_page: PAGE_SIZE }),
-        listEmployees({ per_page: PAGE_SIZE }),
-        // Unfiltered (vs. the old status: 'active' only) so projects can be
-        // broken down by every status client-side instead of one raw count.
-        listProjects({ per_page: PAGE_SIZE }),
-      ]),
+      Promise.all([listDepartments({ status: 'active', per_page: PAGE_SIZE }), countEmployees()]),
   });
 
   const stats = useMemo(() => {
-    if (!data) {
+    if (!data || !projectsResource.data) {
       return null;
     }
 
-    const [departments, employees, projects] = data;
+    const [departments, employeeCount] = data;
 
     return {
       departmentsActive: formatCount(departments),
-      employees: formatCount(employees),
+      employees: String(employeeCount.total),
       projectsByStatus: PROJECT_STATUS_OPTIONS.map((option) => ({
         ...option,
-        count: projects.data.filter((project) => project.status === option.value).length,
+        count: projectsResource.data.filter((project) => project.status === option.value).length,
       })),
     };
-  }, [data]);
+  }, [data, projectsResource.data]);
+
+  const isLoading = loading || projectsResource.loading;
+  const hasError = error || projectsResource.error;
+
+  function refreshAll() {
+    refresh();
+    projectsResource.refresh();
+  }
 
   return (
-    <DashboardWidgetCard title="Tổng quan hệ thống" loading={loading} refreshing={refreshing} error={error} onRefresh={refresh}>
+    <DashboardWidgetCard
+      title="Tổng quan hệ thống"
+      loading={isLoading}
+      refreshing={refreshing || projectsResource.refreshing}
+      error={hasError}
+      onRefresh={refreshAll}
+    >
       {stats && (
         <>
           <div className="mb-3 grid grid-cols-2 gap-2">

@@ -11,33 +11,27 @@ const PREVIEW_SIZE = 5;
 const EMPTY_PAGE = { data: [], meta: {} };
 
 /**
- * Pending leave requests, optionally task delay requests, and Approval Engine requests
+ * Pending leave requests, task delay requests, and Approval Engine requests
  * (role change today, more workflow_type values in later phases) waiting on the viewer's
  * decision - previewed a few at a time with a link into the real list page to act on them,
  * the dashboard just needs to say "this is waiting on you" (mục 9.1), not replicate the full
  * approve/reject UI.
  *
- * Leave/task-delay requests self-scope by actor position on the backend (manager -> own
- * department / employee -> own requests; admin unscoped), so this component doesn't need to
- * know who's viewing it - except for `includeTaskDelayRequests`: unlike leave requests,
- * GetTaskDelayRequestsRequest does NOT scope a manager to the projects they actually manage
- * (mục 7.9/7.10), so a manager here would see requests they have no authority over. Callers
- * pass `includeTaskDelayRequests={false}` for the manager dashboard for that reason; employee
- * (self-scoped) and admin (sees everything, acts on everything) both pass `true`. Approvals
- * don't have this problem - `pending_my_approval=1` is precise per-project (the resolved PM
- * step), so it's always included regardless of `includeTaskDelayRequests`.
+ * All three self-scope by actor position on the backend (manager -> own department / own
+ * managed projects, employee -> own requests, admin unscoped), so this component doesn't need
+ * to know who's viewing it. `GetTaskDelayRequestsRequest` now scopes a manager to requests on
+ * projects they actively manage plus their own submitted requests (see
+ * TaskDelayRequestService::getPaginated()), matching the leave-request scoping - no caller flag
+ * needed.
  */
-export default function DashboardPendingRequests({ title, includeTaskDelayRequests }) {
+export default function DashboardPendingRequests({ title }) {
   const { data, loading, refreshing, error, refresh } = useAsyncResource({
     fetcher: () =>
       Promise.all([
         listLeaveRequests({ status: 'pending', per_page: PREVIEW_SIZE }),
-        includeTaskDelayRequests
-          ? listTaskDelayRequests({ status: 'pending', per_page: PREVIEW_SIZE })
-          : Promise.resolve(EMPTY_PAGE),
+        listTaskDelayRequests({ status: 'pending', per_page: PREVIEW_SIZE }),
         listApprovals({ pending_my_approval: 1, per_page: PREVIEW_SIZE }),
       ]),
-    deps: [includeTaskDelayRequests],
   });
 
   const [leaveRequests, delayRequests, approvals] = data ?? [EMPTY_PAGE, EMPTY_PAGE, EMPTY_PAGE];

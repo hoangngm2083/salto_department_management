@@ -1,28 +1,23 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { listProjects } from '../api/projects';
-import useAsyncResource from '../hooks/useAsyncResource';
 import DashboardWidgetCard from './DashboardWidgetCard';
 
-const PAGE_SIZE = 100;
 const TOP_N = 5;
 
 /**
  * "Dự án cần chú ý" (admin-only): active projects with the most overdue
  * tasks, top 5 - a daily action list instead of a static count (mục 7.4).
- * Fetches independently with `with_counts=1` opted in (`GET /projects` keeps
- * counts off by default to avoid N+1 - mục 7.9/7.2), then sorts/slices
- * client-side; no dedicated endpoint needed.
+ * Filters/sorts/slices client-side from `projectsResource`, the "all
+ * projects with `with_counts=1`" fetch shared with `DashboardSystemOverview`
+ * (lifted to `DashboardPage` so both widgets don't each hit `GET /projects`).
  */
-export default function DashboardAtRiskProjects() {
-  const { data, loading, refreshing, error, refresh } = useAsyncResource({
-    fetcher: () => listProjects({ status: 'active', per_page: PAGE_SIZE, with_counts: 1 }).then((res) => res.data),
-  });
+export default function DashboardAtRiskProjects({ projectsResource }) {
+  const { data, loading, refreshing, error, refresh } = projectsResource;
 
   const atRisk = useMemo(
     () =>
       (data ?? [])
-        .filter((project) => (project.overdue_count ?? 0) > 0)
+        .filter((project) => project.status === 'active' && (project.overdue_count ?? 0) > 0)
         .sort((a, b) => b.overdue_count - a.overdue_count)
         .slice(0, TOP_N),
     [data]
