@@ -3,10 +3,12 @@
 use App\Http\Controllers\Api\V1\ApprovalController;
 use App\Http\Controllers\Api\V1\AssignmentRolePeriodController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CareerJobPostingController;
 use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExportController;
 use App\Http\Controllers\Api\V1\ImportController;
+use App\Http\Controllers\Api\V1\JobApplicationController;
 use App\Http\Controllers\Api\V1\JobPostingController;
 use App\Http\Controllers\Api\V1\LeaveRequestController;
 use App\Http\Controllers\Api\V1\LevelController;
@@ -29,6 +31,17 @@ Route::prefix('auth')->group(function (): void {
         Route::get('me', [AuthController::class, 'me'])->middleware('abilities:profile:read');
         Route::post('logout', [AuthController::class, 'logout'])->middleware('abilities:profile:read');
     });
+});
+
+// Public careers page - no auth:sanctum. Only status=published postings are ever
+// reachable here (see CareerJobPostingController/JobApplicationController).
+Route::prefix('careers')->group(function (): void {
+    Route::get('postings', [CareerJobPostingController::class, 'index'])
+        ->middleware('throttle:careers-read');
+    Route::get('postings/{jobPosting:slug}', [CareerJobPostingController::class, 'show'])
+        ->middleware('throttle:careers-read');
+    Route::post('postings/{jobPosting:slug}/apply', [JobApplicationController::class, 'store'])
+        ->middleware('throttle:job-applications');
 });
 
 Route::middleware('auth:sanctum')->group(function (): void {

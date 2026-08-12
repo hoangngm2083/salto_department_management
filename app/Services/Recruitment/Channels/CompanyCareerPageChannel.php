@@ -15,9 +15,17 @@ use App\Services\Recruitment\Contracts\JobPostingChannel;
  */
 class CompanyCareerPageChannel implements JobPostingChannel
 {
+    /**
+     * Also the `job_applications.channel` attribution value stamped by
+     * JobApplicationService::apply() - the public apply form (Phase R2) is
+     * this channel, so both sides reference the same constant instead of
+     * duplicating the string.
+     */
+    public const string KEY = 'company_career_page';
+
     public function key(): string
     {
-        return 'company_career_page';
+        return self::KEY;
     }
 
     public function dispatch(JobPosting $jobPosting): ChannelDispatchResult

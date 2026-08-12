@@ -29,4 +29,20 @@ return [
 
     'active_channels' => ['company_career_page'],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Resume Upload
+    |--------------------------------------------------------------------------
+    |
+    | Disk 'local' (private, storage/app/private) - resumes contain PII and
+    | must never be served from a publicly browsable disk. Same shape as
+    | config/imports.php's file-upload settings.
+    */
+
+    'resume' => [
+        'disk' => env('RECRUITMENT_RESUME_DISK', 'local'),
+        'allowed_extensions' => explode(',', (string) env('RECRUITMENT_RESUME_ALLOWED_EXTENSIONS', 'pdf,doc,docx')),
+        'max_file_size_mb' => (int) env('RECRUITMENT_RESUME_MAX_FILE_SIZE_MB', 5),
+    ],
+
 ];

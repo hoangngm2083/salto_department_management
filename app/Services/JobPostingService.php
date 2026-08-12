@@ -31,6 +31,20 @@ class JobPostingService
     }
 
     /**
+     * Get published job postings for the public careers listing, cursor-paginated
+     * with department/project names eager-loaded (public visitors can't call the
+     * authenticated /departments or /projects endpoints to resolve those IDs).
+     */
+    public function getPublishedPaginated(int $perPage): CursorPaginator
+    {
+        return JobPosting::query()
+            ->published()
+            ->with(['department', 'project'])
+            ->orderBy('id', 'desc')
+            ->cursorPaginate($perPage);
+    }
+
+    /**
      * Create or update a job posting. Creation always starts Draft regardless of any
      * client-supplied `status` (mirrors TaskService::create() forcing Todo) - only the
      * update path below runs the transition logic. On update, a Draft → Published

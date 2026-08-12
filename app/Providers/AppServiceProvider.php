@@ -48,5 +48,17 @@ class AppServiceProvider extends ServiceProvider
                 $request->string('email')->lower()->toString().'|'.$request->ip()
             );
         });
+
+        // Public careers endpoints (routes/api.php) - no auth:sanctum, so IP is
+        // the only identity signal available. Listing/detail just needs a sane
+        // ceiling against scraping; the apply form is the actual spam target
+        // (mục 10.6), so it gets a much tighter limit.
+        RateLimiter::for('careers-read', function (Request $request): Limit {
+            return Limit::perMinute(60)->by($request->ip());
+        });
+
+        RateLimiter::for('job-applications', function (Request $request): Limit {
+            return Limit::perHour(5)->by($request->ip());
+        });
     }
 }
