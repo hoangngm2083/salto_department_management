@@ -30,10 +30,13 @@ class ApprovalRequestService
     ) {}
 
     /**
-     * Admins see everything. Everyone else defaults to requests they submitted, requests
-     * about them, or requests where they're the resolved approver of the active step;
-     * `mine`/`pending_my_approval` narrow that down for FE tabs ("My requests" vs
-     * "Pending my approval").
+     * With no `mine`/`pending_my_approval` tab selected, admins see everything and everyone
+     * else defaults to requests they submitted, requests about them, or requests where
+     * they're the resolved approver of the active step. `mine`/`pending_my_approval` narrow
+     * that down for FE tabs ("My requests" vs "Pending my approval") for admins too - an
+     * admin bypasses `ApprovalRequestPolicy` and can act on *any* active step (see
+     * `scopeEligibleApprover()`), but "pending my approval" must still mean "still needs a
+     * decision", not "every request regardless of status".
      *
      * @param  array<string, mixed>  $data
      */
@@ -44,18 +47,16 @@ class ApprovalRequestService
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['workflow_type'] ?? null, fn ($q, $type) => $q->where('workflow_type', $type));
 
-        if ($actor->position !== 'admin') {
-            if ($data['mine'] ?? false) {
-                $query->where('requested_by', $actor->id);
-            } elseif ($data['pending_my_approval'] ?? false) {
-                $this->scopeEligibleApprover($query, $actor);
-            } else {
-                $query->where(function (Builder $scope) use ($actor) {
-                    $scope->where('requested_by', $actor->id)
-                        ->orWhere('subject_employee_id', $actor->id)
-                        ->orWhere(fn (Builder $eligible) => $this->scopeEligibleApprover($eligible, $actor));
-                });
-            }
+        if ($data['mine'] ?? false) {
+            $query->where('requested_by', $actor->id);
+        } elseif ($data['pending_my_approval'] ?? false) {
+            $this->scopeEligibleApprover($query, $actor);
+        } elseif ($actor->position !== 'admin') {
+            $query->where(function (Builder $scope) use ($actor) {
+                $scope->where('requested_by', $actor->id)
+                    ->orWhere('subject_employee_id', $actor->id)
+                    ->orWhere(fn (Builder $eligible) => $this->scopeEligibleApprover($eligible, $actor));
+            });
         }
 
         return $query->orderBy('id', 'desc')
@@ -245,11 +246,20 @@ class ApprovalRequestService
     }
 
     /**
+     * An admin bypasses `ApprovalRequestPolicy` entirely (see its `before()`) and can act on
+     * any active step regardless of its `ApproverKind`, so for an admin actor "eligible
+     * approver" just means "the request still has an active step" - anything else has
+     * already been fully decided by someone else and shouldn't show up as pending.
+     *
      * @param  Builder<ApprovalRequest>  $query
      * @return Builder<ApprovalRequest>
      */
     private function scopeEligibleApprover(Builder $query, Employee $actor): Builder
     {
+        if ($actor->position === 'admin') {
+            return $query->whereHas('activeStep');
+        }
+
         return $query->whereHas('activeStep', function (Builder $step) use ($actor) {
             $step->where('approver_employee_id', $actor->id);
 

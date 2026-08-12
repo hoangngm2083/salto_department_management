@@ -53,6 +53,56 @@ test('listApprovals_admin_allReturned', function () {
     expect($response->json('data.data'))->toHaveCount(2);
 });
 
+test('listApprovals_adminPendingMyApprovalFilter_onlyAwaitingDecision', function () {
+    // Arrange - admin bypasses the approver-eligibility policy and can act on any active
+    // step, but "pending my approval" must still exclude requests someone else already
+    // fully resolved (regression: this used to ignore the filter entirely for admins).
+    // approver_employee_id is reused from each approval's own requester rather than left to
+    // the factory default, just to avoid minting more employees (and thus more departments)
+    // than DepartmentFactory's small fixed name pool can uniquely supply.
+    $awaitingDecision = ApprovalRequest::factory()->create(['status' => 'submitted']);
+    ApprovalStep::factory()->create([
+        'approval_request_id' => $awaitingDecision->id,
+        'step_order' => 1,
+        'approver_employee_id' => $awaitingDecision->requested_by,
+        'status' => 'active',
+    ]);
+
+    $alreadyApproved = ApprovalRequest::factory()->create(['status' => 'approved']);
+    ApprovalStep::factory()->create([
+        'approval_request_id' => $alreadyApproved->id,
+        'step_order' => 1,
+        'approver_employee_id' => $alreadyApproved->requested_by,
+        'status' => 'approved',
+    ]);
+
+    Sanctum::actingAs(Employee::factory()->create(['position' => 'admin']), ['*']);
+
+    // Act
+    $response = $this->getJson('/api/approvals?pending_my_approval=1');
+
+    // Assert
+    $response->assertSuccessful();
+    $ids = collect($response->json('data.data'))->pluck('id')->all();
+    expect($ids)->toBe([$awaitingDecision->id]);
+});
+
+test('listApprovals_adminMineFilter_scopedToOwn', function () {
+    // Arrange
+    $admin = Employee::factory()->create(['position' => 'admin']);
+    $mine = ApprovalRequest::factory()->create(['requested_by' => $admin->id]);
+    ApprovalRequest::factory()->create();
+    Sanctum::actingAs($admin, ['*']);
+
+    // Act
+    $response = $this->getJson('/api/approvals?mine=1');
+
+    // Assert
+    $response->assertSuccessful();
+    $ids = collect($response->json('data.data'))->pluck('id')->all();
+    expect($ids)->toBe([$mine->id]);
+});
+
 test('listApprovals_employeeMineFilter_scopedToOwn', function () {
     // Arrange
     $employee = Employee::factory()->create(['position' => 'employee']);
